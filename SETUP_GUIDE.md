@@ -18,12 +18,23 @@ siteview/
 
 ## Step 1: Firebase Setup
 
+> **Provisioning status (July 2026):** The Firebase project `siteview-buildchain`
+> exists and **Firestore is live** — the database, security rules, and composite
+> indexes in `firebase/` are deployed. Still pending:
+> - **Storage** — not set up. Requires clicking "Get Started" on the Storage page
+>   and upgrading to the Blaze plan (new projects can't create the default bucket
+>   on Spark). The bucket will be named `siteview-buildchain.firebasestorage.app`
+>   (not `.appspot.com` — set `FIREBASE_STORAGE_BUCKET` accordingly). Photo and
+>   document uploads fail until this is done.
+> - **Authentication** (Email/Password), the **service account key** for the
+>   backend, and **web app registration** for the client configs (steps below).
+
 1. Go to https://console.firebase.google.com
 2. Click "Add project" → name it "siteview-buildchain"
 3. Enable these services:
    - **Authentication** → Email/Password
    - **Firestore Database** → Start in production mode
-   - **Storage** → Start in production mode
+   - **Storage** → Start in production mode (requires Blaze plan)
    - **Cloud Messaging** (for push notifications)
 
 4. Get your Firebase config:
@@ -34,12 +45,14 @@ siteview/
    - Project Settings → Service Accounts → Generate new private key
    - Save as `backend/serviceAccountKey.json`
 
-6. Deploy Firestore rules:
+6. Deploy Firestore rules + indexes (and Storage rules once Storage is set up):
    ```bash
    npm install -g firebase-tools
    firebase login
-   firebase deploy --only firestore:rules,storage
+   firebase deploy --only firestore          # rules + indexes (already deployed)
+   firebase deploy --only storage            # pending Storage setup
    ```
+   The project is set in `.firebaserc`; `firebase.json` points at the files in `firebase/`.
 
 ---
 
@@ -56,7 +69,7 @@ Edit `.env` with your values:
 FIREBASE_PROJECT_ID=siteview-buildchain
 FIREBASE_PRIVATE_KEY=<from service account key>
 FIREBASE_CLIENT_EMAIL=<from service account key>
-FIREBASE_STORAGE_BUCKET=siteview-buildchain.appspot.com
+FIREBASE_STORAGE_BUCKET=siteview-buildchain.firebasestorage.app  # once Storage is set up
 GOOGLE_MAPS_API_KEY=<from Google Cloud Console>
 PORT=5000
 ```

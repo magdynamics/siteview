@@ -37,6 +37,7 @@ firebase deploy --only firestore,storage
 ## Configuration
 
 - `backend/.env` (copy from `.env.example`): `FIREBASE_PROJECT_ID`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_STORAGE_BUCKET`, `GOOGLE_MAPS_API_KEY`, `PORT`, `FRONTEND_URL` (CORS origin). Service account key lives at `backend/serviceAccountKey.json` (never commit).
+- Provisioning status: Firestore (database, rules, indexes) is deployed to `siteview-buildchain`. **Firebase Storage is not yet set up** — needs console "Get Started" + Blaze plan; photo/document uploads fail until then, and the bucket will be `siteview-buildchain.firebasestorage.app` (not `.appspot.com`). Auth (Email/Password), the service account key, and client app configs are also still pending per `SETUP_GUIDE.md`.
 - Firebase client configs are hardcoded in `web/src/services/firebase.js` and `mobile/src/services/firebase.js`.
 - The backend API URL is set in `web/.env` (`REACT_APP_API_URL`) and hardcoded in `mobile/src/services/api.js`.
 
