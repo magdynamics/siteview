@@ -11,6 +11,9 @@ web/build/
 mobile/.expo/
 dist/
 
+# Firebase CLI artifacts
+firebase-debug.log
+
 # OS / editor
 .DS_Store
 Thumbs.db
