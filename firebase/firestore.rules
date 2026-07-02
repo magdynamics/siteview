@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuth() {
+      return request.auth != null;
+    }
+    function getUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function hasRole(role) {
+      return isAuth() && getUser().role == role;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow write: if hasRole('admin');
+    }
+    match /sites/{siteId} {
+      allow read: if isAuth();
+      allow write: if hasRole('admin');
+    }
+    match /punches/{punchId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if hasRole('admin') || hasRole('supervisor');
+    }
+    match /timesheets/{timesheetId} {
+      allow read: if isAuth();
+      allow write: if hasRole('admin') || hasRole('supervisor') || hasRole('accountant');
+    }
+    match /task_photos/{photoId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+    }
+    match /documents/{docId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+    }
+    match /audit_logs/{logId} {
+      allow read: if hasRole('admin') || hasRole('supervisor') || hasRole('accountant') || hasRole('manager');
+      allow create: if isAuth();
+      allow update, delete: if false; // Audit logs are immutable
+    }
+  }
+}
