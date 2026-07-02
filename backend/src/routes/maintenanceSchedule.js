@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const cron = require('node-cron');
 const { db, messaging } = require('../services/firebase');
+const { createMaintenanceRecord } = require('../services/maintenanceRecords');
 const { authenticate, authorize } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
@@ -12,7 +13,6 @@ router.post('/', authenticate, authorize('supervisor', 'admin'), async (req, res
       equipmentId,
       equipmentName,
       siteId,
-      scheduleType,         // 'hours' | 'date' | 'both'
       maintenanceType,      // 'oil_change' | 'filter' | 'inspection' | 'tires' | 'custom'
       customDescription,    // if maintenanceType is 'custom'
       intervalHours,        // e.g. every 250 hours
@@ -24,19 +24,47 @@ router.post('/', authenticate, authorize('supervisor', 'admin'), async (req, res
       isRecurring,          // auto-reschedule after completion
     } = req.body;
 
+    if (!equipmentId) return res.status(400).json({ error: 'equipmentId is required' });
+    if (!maintenanceType) return res.status(400).json({ error: 'maintenanceType is required' });
+
+    const parsedIntervalHours = intervalHours ? parseFloat(intervalHours) : null;
+    const parsedIntervalDays = intervalDays ? parseInt(intervalDays) : null;
+    let parsedNextDueDate = nextDueDate || null;
+    let parsedNextDueHours = nextDueHours ? parseFloat(nextDueHours) : null;
+
+    const hasDateTrigger = !!(parsedIntervalDays || parsedNextDueDate);
+    const hasHoursTrigger = !!(parsedIntervalHours || parsedNextDueHours);
+    if (!hasDateTrigger && !hasHoursTrigger) {
+      return res.status(400).json({ error: 'Schedule needs an interval or a next due date/hours' });
+    }
+
+    const equipDoc = await db.collection('equipment').doc(equipmentId).get();
+    if (!equipDoc.exists) return res.status(404).json({ error: 'Equipment not found' });
+    const equip = equipDoc.data();
+
+    // When only an interval was given, derive the first due point
+    if (!parsedNextDueDate && parsedIntervalDays) {
+      const next = new Date();
+      next.setDate(next.getDate() + parsedIntervalDays);
+      parsedNextDueDate = next.toISOString().split('T')[0];
+    }
+    if (!parsedNextDueHours && parsedIntervalHours) {
+      parsedNextDueHours = (equip.currentHours || 0) + parsedIntervalHours;
+    }
+
     const id = uuidv4();
     const schedule = {
       id,
       equipmentId,
-      equipmentName,
-      siteId,
-      scheduleType,
+      equipmentName: equipmentName || equip.name || '',
+      siteId: siteId || equip.siteId || null,
+      scheduleType: hasDateTrigger && hasHoursTrigger ? 'both' : hasHoursTrigger ? 'hours' : 'date',
       maintenanceType,
       customDescription: customDescription || '',
-      intervalHours: intervalHours ? parseFloat(intervalHours) : null,
-      intervalDays: intervalDays ? parseInt(intervalDays) : null,
-      nextDueDate: nextDueDate || null,
-      nextDueHours: nextDueHours ? parseFloat(nextDueHours) : null,
+      intervalHours: parsedIntervalHours,
+      intervalDays: parsedIntervalDays,
+      nextDueDate: parsedNextDueDate,
+      nextDueHours: parsedNextDueHours,
       reminderDaysBefore: reminderDaysBefore ? parseInt(reminderDaysBefore) : 3,
       notifyRoles: notifyRoles || ['supervisor'],
       isRecurring: isRecurring !== false,
@@ -55,7 +83,7 @@ router.post('/', authenticate, authorize('supervisor', 'admin'), async (req, res
 });
 
 // ─── GET SCHEDULES ────────────────────────────────────────────────────────────
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, authorize('supervisor', 'manager', 'admin'), async (req, res) => {
   try {
     const { equipmentId, siteId, status } = req.query;
     let query = db.collection('maintenance_schedules');
@@ -71,7 +99,8 @@ router.get('/', authenticate, async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     const enriched = schedules.map(s => ({
       ...s,
-      isOverdue: s.nextDueDate && s.nextDueDate < today && s.status === 'active',
+      isOverdue: s.status === 'overdue' ||
+        (s.status === 'active' && !!s.nextDueDate && s.nextDueDate < today),
       daysUntilDue: s.nextDueDate
         ? Math.ceil((new Date(s.nextDueDate) - new Date()) / 86400000)
         : null,
@@ -83,20 +112,27 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// ─── MARK SCHEDULE AS COMPLETED (auto-reschedule) ────────────────────────────
+// ─── MARK SCHEDULE AS COMPLETED (auto-reschedule + log maintenance record) ───
 router.post('/:id/complete', authenticate, authorize('supervisor', 'admin'), async (req, res) => {
   try {
-    const { completedDate, completedAtHours } = req.body;
+    const { completedDate, completedAtHours, performedBy, notes } = req.body;
     const doc = await db.collection('maintenance_schedules').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Schedule not found' });
     const schedule = doc.data();
     const now = completedDate || new Date().toISOString().split('T')[0];
+
+    // Hour-based recurring schedules can't compute the next due point without a reading
+    if (schedule.isRecurring && schedule.intervalHours && !completedAtHours) {
+      return res.status(400).json({ error: 'completedAtHours is required for hour-based schedules' });
+    }
 
     let updates = {
       lastCompletedDate: now,
       lastCompletedHours: completedAtHours ? parseFloat(completedAtHours) : null,
     };
 
-    if (schedule.isRecurring) {
+    // A recurring schedule with no interval has nothing to reschedule — close it out
+    if (schedule.isRecurring && (schedule.intervalDays || schedule.intervalHours)) {
       // Calculate next due
       let nextDueDate = null;
       let nextDueHours = null;
@@ -115,17 +151,63 @@ router.post('/:id/complete', authenticate, authorize('supervisor', 'admin'), asy
       updates.status = 'completed';
     }
 
+    // Log the completed work in maintenance history
+    const record = await createMaintenanceRecord({
+      equipmentId: schedule.equipmentId,
+      equipmentName: schedule.equipmentName,
+      siteId: schedule.siteId,
+      performedBy: performedBy || req.user.name || req.user.uid,
+      authorizedBy: req.user.name || req.user.uid,
+      maintenanceDate: now,
+      maintenanceType: 'routine',
+      description: schedule.maintenanceType === 'custom'
+        ? (schedule.customDescription || 'Scheduled maintenance')
+        : `Scheduled ${(schedule.maintenanceType || '').replace(/_/g, ' ')}`,
+      hoursAtService: completedAtHours,
+      nextServiceDate: updates.nextDueDate || null,
+      nextServiceHours: updates.nextDueHours || null,
+      notes,
+      scheduleId: schedule.id,
+      status: 'completed',
+    }, req.user.uid);
+    updates.lastMaintenanceRecordId = record.id;
+
     await db.collection('maintenance_schedules').doc(req.params.id).update(updates);
-    res.json({ message: schedule.isRecurring ? 'Schedule updated and rescheduled' : 'Schedule completed', updates });
+    res.json({ message: schedule.isRecurring ? 'Schedule updated and rescheduled' : 'Schedule completed', updates, record });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // ─── UPDATE SCHEDULE ──────────────────────────────────────────────────────────
+// Only these fields are editable; id/equipmentId/status/audit fields are not
+const UPDATABLE_FIELDS = {
+  equipmentName: v => v,
+  maintenanceType: v => v,
+  customDescription: v => v,
+  intervalHours: v => (v ? parseFloat(v) : null),
+  intervalDays: v => (v ? parseInt(v) : null),
+  nextDueDate: v => v || null,
+  nextDueHours: v => (v ? parseFloat(v) : null),
+  reminderDaysBefore: v => (v ? parseInt(v) : 3),
+  notifyRoles: v => v,
+  isRecurring: v => v !== false,
+};
+
 router.put('/:id', authenticate, authorize('supervisor', 'admin'), async (req, res) => {
   try {
-    await db.collection('maintenance_schedules').doc(req.params.id).update(req.body);
+    const updates = {};
+    for (const [field, parse] of Object.entries(UPDATABLE_FIELDS)) {
+      if (field in req.body) updates[field] = parse(req.body[field]);
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No updatable fields provided' });
+    }
+
+    const doc = await db.collection('maintenance_schedules').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Schedule not found' });
+
+    await db.collection('maintenance_schedules').doc(req.params.id).update(updates);
     res.json({ message: 'Schedule updated' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -135,6 +217,8 @@ router.put('/:id', authenticate, authorize('supervisor', 'admin'), async (req, r
 // ─── PAUSE / RESUME SCHEDULE ──────────────────────────────────────────────────
 router.post('/:id/pause', authenticate, authorize('supervisor', 'admin'), async (req, res) => {
   try {
+    const doc = await db.collection('maintenance_schedules').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Schedule not found' });
     await db.collection('maintenance_schedules').doc(req.params.id).update({ status: 'paused' });
     res.json({ message: 'Schedule paused' });
   } catch (err) {
@@ -144,6 +228,8 @@ router.post('/:id/pause', authenticate, authorize('supervisor', 'admin'), async 
 
 router.post('/:id/resume', authenticate, authorize('supervisor', 'admin'), async (req, res) => {
   try {
+    const doc = await db.collection('maintenance_schedules').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Schedule not found' });
     await db.collection('maintenance_schedules').doc(req.params.id).update({ status: 'active' });
     res.json({ message: 'Schedule resumed' });
   } catch (err) {
@@ -153,30 +239,51 @@ router.post('/:id/resume', authenticate, authorize('supervisor', 'admin'), async
 
 // ─── DAILY REMINDER JOB (runs at 7:00 AM every day) ──────────────────────────
 cron.schedule('0 7 * * *', async () => {
-  console.log('[Maintenance Reminders] Running daily check...');
   try {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
 
+    // Firestore marker so only one server instance runs the job per day
+    const markerRef = db.collection('system').doc('maintenanceReminderJob');
+    const shouldRun = await db.runTransaction(async t => {
+      const marker = await t.get(markerRef);
+      if (marker.exists && marker.data().lastRunDate === todayStr) return false;
+      t.set(markerRef, { lastRunDate: todayStr, lastRunAt: new Date().toISOString() });
+      return true;
+    });
+    if (!shouldRun) return;
+
+    console.log('[Maintenance Reminders] Running daily check...');
+
     const snapshot = await db.collection('maintenance_schedules')
-      .where('status', '==', 'active')
+      .where('status', 'in', ['active', 'overdue'])
       .get();
 
     for (const doc of snapshot.docs) {
       const schedule = doc.data();
-      if (!schedule.nextDueDate) continue;
+
+      if (!schedule.nextDueDate) {
+        // Hour-based schedule already flagged overdue by machine-hours logging:
+        // keep reminding daily until it's completed
+        if (schedule.status === 'overdue') {
+          await sendMaintenanceReminder(schedule, null, true);
+        }
+        continue;
+      }
 
       const dueDate = new Date(schedule.nextDueDate);
       const daysUntil = Math.ceil((dueDate - today) / 86400000);
 
       // Send reminder if within X days before due
-      if (daysUntil <= schedule.reminderDaysBefore && daysUntil >= 0) {
+      if (daysUntil <= schedule.reminderDaysBefore && daysUntil >= 0 && schedule.status === 'active') {
         await sendMaintenanceReminder(schedule, daysUntil, false);
       }
 
-      // Mark overdue
+      // Mark overdue (once) and keep reminding daily while overdue
       if (daysUntil < 0) {
-        await db.collection('maintenance_schedules').doc(doc.id).update({ status: 'overdue' });
+        if (schedule.status === 'active') {
+          await db.collection('maintenance_schedules').doc(doc.id).update({ status: 'overdue' });
+        }
         await sendMaintenanceReminder(schedule, Math.abs(daysUntil), true);
       }
     }
@@ -210,7 +317,9 @@ async function sendMaintenanceReminder(schedule, days, isOverdue) {
       : `🔧 Maintenance Due: ${schedule.equipmentName}`;
 
     const body = isOverdue
-      ? `${schedule.maintenanceType} is ${days} day(s) overdue on ${schedule.equipmentName}`
+      ? (days === null
+          ? `${schedule.maintenanceType} is overdue on ${schedule.equipmentName}`
+          : `${schedule.maintenanceType} is ${days} day(s) overdue on ${schedule.equipmentName}`)
       : days === 0
         ? `${schedule.maintenanceType} is due TODAY on ${schedule.equipmentName}`
         : `${schedule.maintenanceType} is due in ${days} day(s) on ${schedule.equipmentName}`;

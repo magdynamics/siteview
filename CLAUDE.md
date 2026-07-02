@@ -30,8 +30,8 @@ npm run build      # production build; deploy: firebase deploy --only hosting
 npm start          # expo start (scan QR with Expo Go)
 npm run ios / npm run android
 
-# Firebase rules
-firebase deploy --only firestore:rules,storage
+# Firebase rules + indexes (firebase.json at repo root points at firebase/)
+firebase deploy --only firestore,storage
 ```
 
 ## Configuration
@@ -60,7 +60,7 @@ The web app mirrors this: `web/src/pages/` is organized into `admin/`, `manager/
 
 `backend/src/routes/` has one module per domain, all registered in `src/server.js`. Domains: time tracking (`punches`, `timesheets`), workforce (`auth`, `employees`, `sites`), equipment management (`equipment`, `machineHours`, `maintenance`, `maintenanceSchedule`, `repairTickets`, `technicians`, `inspections`, `healthDashboard`), plus `inventory`, `documents`, `photos`, `notifications`, `reports`.
 
-`backend/src/services/`: `firebase.js` (Admin SDK — Firestore + Storage), `pdf.js` (pdfkit) and `excel.js` (exceljs) for invoice/timesheet exports.
+`backend/src/services/`: `firebase.js` (Admin SDK — Firestore + Storage), `pdf.js` (pdfkit) and `excel.js` (exceljs) for invoice/timesheet exports, `maintenanceRecords.js` (shared maintenance-record writer used by manual creation, schedule completion, and ticket completion), `inventoryStock.js` (stock decrement + transaction log shared by inventory and maintenance-supplies endpoints).
 
 Note: `/api/health` is registered twice in `server.js` — the healthDashboard router and a plain status endpoint; the router wins for matching paths.
 

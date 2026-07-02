@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../services/firebase');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 
 // ─── EQUIPMENT HEALTH SCORE ENGINE ───────────────────────────────────────────
 // Returns health score (0-100) and color for each piece of equipment
@@ -43,7 +43,7 @@ function computeHealthScore(equip, openTickets, overdueSchedules, lastInspection
 }
 
 // ─── GET HEALTH DASHBOARD FOR A SITE ─────────────────────────────────────────
-router.get('/:siteId', authenticate, async (req, res) => {
+router.get('/:siteId', authenticate, authorize('supervisor', 'manager', 'admin'), async (req, res) => {
   try {
     const { siteId } = req.params;
 
@@ -55,41 +55,39 @@ router.get('/:siteId', authenticate, async (req, res) => {
 
     const equipmentList = equipSnap.docs.map(d => d.data());
 
-    // For each equipment, compute health
-    const healthData = [];
-    for (const equip of equipmentList) {
-      // Open repair tickets
-      const ticketSnap = await db.collection('repair_tickets')
-        .where('equipmentId', '==', equip.id)
-        .where('status', 'in', ['pending', 'approved', 'in_progress'])
-        .get();
+    // Compute health for all equipment in parallel
+    const healthData = await Promise.all(equipmentList.map(async (equip) => {
+      const [ticketSnap, scheduleSnap, inspSnap, maintSnap] = await Promise.all([
+        // Open repair tickets
+        db.collection('repair_tickets')
+          .where('equipmentId', '==', equip.id)
+          .where('status', 'in', ['pending', 'approved', 'in_progress'])
+          .get(),
+        // Overdue maintenance schedules
+        db.collection('maintenance_schedules')
+          .where('equipmentId', '==', equip.id)
+          .where('status', '==', 'overdue')
+          .get(),
+        // Last inspection
+        db.collection('inspections')
+          .where('equipmentId', '==', equip.id)
+          .orderBy('timestamp', 'desc')
+          .limit(1)
+          .get(),
+        // Maintenance cost total
+        db.collection('maintenance_records')
+          .where('equipmentId', '==', equip.id)
+          .get(),
+      ]);
+
       const openTickets = ticketSnap.docs.map(d => d.data());
-
-      // Overdue maintenance schedules
-      const scheduleSnap = await db.collection('maintenance_schedules')
-        .where('equipmentId', '==', equip.id)
-        .where('status', '==', 'overdue')
-        .get();
       const overdueSchedules = scheduleSnap.docs.map(d => d.data());
-
-      // Last inspection
-      const inspSnap = await db.collection('inspections')
-        .where('equipmentId', '==', equip.id)
-        .orderBy('timestamp', 'desc')
-        .limit(1)
-        .get();
       const lastInspection = inspSnap.docs.length > 0 ? inspSnap.docs[0].data() : null;
-
-      // Maintenance cost total
-      const maintSnap = await db.collection('maintenance_records')
-        .where('equipmentId', '==', equip.id)
-        .get();
       const totalMaintenanceCost = maintSnap.docs.reduce((sum, d) => sum + (d.data().totalCost || 0), 0);
 
-      // Compute score
       const health = computeHealthScore(equip, openTickets, overdueSchedules, lastInspection);
 
-      healthData.push({
+      return {
         equipment: equip,
         health,
         openTickets: openTickets.length,
@@ -101,8 +99,8 @@ router.get('/:siteId', authenticate, async (req, res) => {
         } : null,
         currentHours: equip.currentHours || 0,
         totalMaintenanceCost: +totalMaintenanceCost.toFixed(2),
-      });
-    }
+      };
+    }));
 
     // Sort: critical first
     healthData.sort((a, b) => a.health.score - b.health.score);
@@ -122,7 +120,7 @@ router.get('/:siteId', authenticate, async (req, res) => {
 });
 
 // ─── COST ANALYSIS PER EQUIPMENT ─────────────────────────────────────────────
-router.get('/costs/:equipmentId', authenticate, async (req, res) => {
+router.get('/costs/:equipmentId', authenticate, authorize('supervisor', 'accountant', 'manager', 'admin'), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     let query = db.collection('maintenance_records').where('equipmentId', '==', req.params.equipmentId);

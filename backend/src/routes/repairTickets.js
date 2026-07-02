@@ -2,10 +2,28 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { db, storage, messaging } = require('../services/firebase');
+const { createMaintenanceRecord } = require('../services/maintenanceRecords');
 const { authenticate, authorize } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+// Set equipment back to available once no open tickets remain for it;
+// leaves status alone while other tickets still block the machine
+async function releaseEquipmentIfClear(equipmentId) {
+  const openSnap = await db.collection('repair_tickets')
+    .where('equipmentId', '==', equipmentId)
+    .where('status', 'in', ['pending', 'approved', 'in_progress'])
+    .get();
+  if (!openSnap.empty) return;
+
+  const equipDoc = await db.collection('equipment').doc(equipmentId).get();
+  if (!equipDoc.exists) return;
+  const status = equipDoc.data().status;
+  if (status === 'maintenance' || status === 'out_of_service') {
+    await db.collection('equipment').doc(equipmentId).update({ status: 'available' });
+  }
+}
 
 // ─── CREATE REPAIR TICKET ─────────────────────────────────────────────────────
 // Any employee or supervisor can open a ticket
@@ -177,9 +195,9 @@ router.post('/:id/reject', authenticate, authorize('supervisor', 'admin'), async
       rejectedReason: reason || '',
     });
 
-    // Restore equipment to available if rejected
+    // Restore equipment to available if nothing else blocks it
     const ticket = (await db.collection('repair_tickets').doc(req.params.id).get()).data();
-    await db.collection('equipment').doc(ticket.equipmentId).update({ status: 'available' });
+    await releaseEquipmentIfClear(ticket.equipmentId);
 
     res.json({ message: 'Ticket rejected' });
   } catch (err) {
@@ -206,16 +224,44 @@ router.post('/:id/complete', authenticate, authorize('supervisor', 'admin'), asy
     const { maintenanceRecordId, actualCost, finalNotes } = req.body;
     const now = new Date().toISOString();
 
+    const doc = await db.collection('repair_tickets').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Ticket not found' });
+    const ticket = doc.data();
+
+    // Log the repair in maintenance history unless the client already created a record
+    let recordId = maintenanceRecordId || null;
+    let record = null;
+    if (!recordId) {
+      record = await createMaintenanceRecord({
+        equipmentId: ticket.equipmentId,
+        equipmentName: ticket.equipmentName,
+        siteId: ticket.siteId,
+        performedBy: ticket.assignedTo || req.user.name || req.user.uid,
+        authorizedBy: ticket.approvedByName || ticket.approvedBy || null,
+        maintenanceDate: now.split('T')[0],
+        maintenanceType: 'repair',
+        description: [ticket.issueType, ticket.description].filter(Boolean).join(' — ') || 'Repair',
+        totalCost: actualCost,
+        notes: finalNotes,
+        finalNotes,
+        repairTicketId: ticket.id,
+        status: 'completed',
+      }, req.user.uid);
+      recordId = record.id;
+    }
+
     await db.collection('repair_tickets').doc(req.params.id).update({
       status: 'completed',
       completedAt: now,
       completedBy: req.user.uid,
-      maintenanceRecordId: maintenanceRecordId || null,
+      maintenanceRecordId: recordId,
       actualCost: actualCost ? parseFloat(actualCost) : null,
       finalNotes: finalNotes || '',
     });
 
-    res.json({ message: 'Ticket completed' });
+    await releaseEquipmentIfClear(ticket.equipmentId);
+
+    res.json({ message: 'Ticket completed', maintenanceRecordId: recordId, record });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -248,18 +294,31 @@ router.post('/:id/comments', authenticate, async (req, res) => {
 // ─── UPLOAD PHOTO TO TICKET ───────────────────────────────────────────────────
 router.post('/:id/photos', authenticate, upload.single('photo'), async (req, res) => {
   try {
-    const { photoType } = req.body; // 'issue' | 'after_repair'
+    const { photoType } = req.body;
+    if (!req.file) return res.status(400).json({ error: 'photo file is required' });
+    if (!['issue', 'after_repair'].includes(photoType)) {
+      return res.status(400).json({ error: "photoType must be 'issue' or 'after_repair'" });
+    }
+
+    const doc = await db.collection('repair_tickets').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Ticket not found' });
+
     const photoId = uuidv4();
     const fileName = `repair_tickets/${req.params.id}/${photoType}_${photoId}.jpg`;
 
+    // Tokenized download URL instead of a world-readable public file
+    const downloadToken = uuidv4();
     const bucket = storage.bucket();
     const file = bucket.file(fileName);
-    await file.save(req.file.buffer, { metadata: { contentType: req.file.mimetype } });
-    await file.makePublic();
-    const url = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    await file.save(req.file.buffer, {
+      metadata: {
+        contentType: req.file.mimetype,
+        metadata: { firebaseStorageDownloadTokens: downloadToken },
+      },
+    });
+    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
 
     const photo = { id: photoId, photoType, url, uploadedBy: req.user.uid, uploadedAt: new Date().toISOString() };
-    const doc = await db.collection('repair_tickets').doc(req.params.id).get();
     await db.collection('repair_tickets').doc(req.params.id).update({
       photos: [...(doc.data().photos || []), photo],
     });

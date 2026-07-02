@@ -57,12 +57,16 @@ export default function MaintenanceView({ siteId }) {
 
   const completeSchedule = async (id) => {
     const hours = prompt('Current machine hours (leave blank if N/A):');
-    await api.post(`/maintenance-schedule/${id}/complete`, {
-      completedDate: new Date().toISOString().split('T')[0],
-      completedAtHours: hours || null,
-    });
-    await loadSchedules();
-    alert('Maintenance marked as completed and rescheduled');
+    try {
+      await api.post(`/maintenance-schedule/${id}/complete`, {
+        completedDate: new Date().toISOString().split('T')[0],
+        completedAtHours: hours || null,
+      });
+      await loadSchedules();
+      alert('Maintenance marked as completed and rescheduled');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to complete schedule');
+    }
   };
 
   const pendingTickets = tickets.filter(t => t.status === 'pending').length;
@@ -248,7 +252,7 @@ export default function MaintenanceView({ siteId }) {
       )}
 
       {/* New Schedule Modal */}
-      {showNewSchedule && <NewScheduleModal equipment={equipment} onClose={() => setShowNewSchedule(false)} onSave={async (data) => { await api.post('/maintenance-schedule', { ...data, siteId }); setShowNewSchedule(false); loadSchedules(); }} />}
+      {showNewSchedule && <NewScheduleModal equipment={equipment} onClose={() => setShowNewSchedule(false)} onSave={async (data) => { try { await api.post('/maintenance-schedule', { ...data, siteId }); setShowNewSchedule(false); loadSchedules(); } catch (err) { alert(err.response?.data?.error || 'Failed to create schedule'); } }} />}
     </div>
   );
 }

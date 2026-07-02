@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { db, storage } = require('../services/firebase');
+const { takeFromInventory } = require('../services/inventoryStock');
 const { authenticate, authorize } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
@@ -30,6 +31,13 @@ router.post('/', authenticate, authorize('supervisor', 'admin'), async (req, res
       nextServiceDate,     // next service due date
       notes,
     } = req.body;
+
+    if (!equipmentId) return res.status(400).json({ error: 'equipmentId is required' });
+    if (!maintenanceType) return res.status(400).json({ error: 'maintenanceType is required' });
+    if (!maintenanceDate) return res.status(400).json({ error: 'maintenanceDate is required' });
+
+    const equipDoc = await db.collection('equipment').doc(equipmentId).get();
+    if (!equipDoc.exists) return res.status(404).json({ error: 'Equipment not found' });
 
     const id = uuidv4();
     const record = {
@@ -61,13 +69,6 @@ router.post('/', authenticate, authorize('supervisor', 'admin'), async (req, res
 
     await db.collection('maintenance_records').doc(id).set(record);
 
-    // Update equipment status back to available after maintenance
-    await db.collection('equipment').doc(equipmentId).update({
-      status: 'available',
-      lastMaintenanceDate: maintenanceDate,
-      lastMaintenanceId: id,
-    });
-
     await db.collection('audit_logs').doc(uuidv4()).set({
       action: 'MAINTENANCE_CREATED',
       equipmentId,
@@ -83,7 +84,7 @@ router.post('/', authenticate, authorize('supervisor', 'admin'), async (req, res
 });
 
 // ─── GET MAINTENANCE HISTORY ──────────────────────────────────────────────────
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, authorize('supervisor', 'accountant', 'manager', 'admin'), async (req, res) => {
   try {
     const { equipmentId, siteId, startDate, endDate, maintenanceType } = req.query;
     let query = db.collection('maintenance_records');
@@ -103,7 +104,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // ─── GET SINGLE RECORD ────────────────────────────────────────────────────────
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, authorize('supervisor', 'accountant', 'manager', 'admin'), async (req, res) => {
   try {
     const doc = await db.collection('maintenance_records').doc(req.params.id).get();
     if (!doc.exists) return res.status(404).json({ error: 'Record not found' });
@@ -117,20 +118,30 @@ router.get('/:id', authenticate, async (req, res) => {
 router.post('/:id/photos', authenticate, authorize('supervisor', 'admin'), upload.single('photo'), async (req, res) => {
   try {
     const { photoType } = req.body;
-    // photoType: 'before' | 'after' | 'parts_used'
+    if (!req.file) return res.status(400).json({ error: 'photo file is required' });
+    if (!['before', 'after', 'parts_used'].includes(photoType)) {
+      return res.status(400).json({ error: "photoType must be 'before', 'after', or 'parts_used'" });
+    }
 
     const maintenanceId = req.params.id;
+    const recordDoc = await db.collection('maintenance_records').doc(maintenanceId).get();
+    if (!recordDoc.exists) return res.status(404).json({ error: 'Record not found' });
+
     const photoId = uuidv4();
     const ext = 'jpg';
     const fileName = `maintenance/${maintenanceId}/${photoType}_${photoId}.${ext}`;
 
+    // Tokenized download URL instead of a world-readable public file
+    const downloadToken = uuidv4();
     const bucket = storage.bucket();
     const file = bucket.file(fileName);
     await file.save(req.file.buffer, {
-      metadata: { contentType: req.file.mimetype },
+      metadata: {
+        contentType: req.file.mimetype,
+        metadata: { firebaseStorageDownloadTokens: downloadToken },
+      },
     });
-    await file.makePublic();
-    const url = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
 
     const photo = {
       id: photoId,
@@ -141,8 +152,7 @@ router.post('/:id/photos', authenticate, authorize('supervisor', 'admin'), uploa
     };
 
     // Append to maintenance record photos array
-    const doc = await db.collection('maintenance_records').doc(maintenanceId).get();
-    const existing = doc.data().photos || [];
+    const existing = recordDoc.data().photos || [];
     await db.collection('maintenance_records').doc(maintenanceId).update({
       photos: [...existing, photo],
     });
@@ -166,33 +176,74 @@ router.post('/:id/supplies', authenticate, authorize('supervisor', 'admin'), asy
       authorizedBy,     // who authorized
       authorizedAt,     // when authorized
       fromInventory,    // taken from inventory? true/false
+      inventoryItemId,  // inventory doc id (required when fromInventory)
       supplier,         // supplier name if purchased
       receiptUrl,       // scanned receipt URL
     } = req.body;
 
+    if (!itemName && !(fromInventory && inventoryItemId)) {
+      return res.status(400).json({ error: 'itemName is required' });
+    }
+    const parsedQuantity = parseFloat(quantity);
+    if (isNaN(parsedQuantity) || parsedQuantity <= 0) {
+      return res.status(400).json({ error: 'quantity must be a positive number' });
+    }
+
+    const doc = await db.collection('maintenance_records').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Record not found' });
+    const record = doc.data();
+
+    // Pull stock so parts usage and inventory counts stay in sync
+    let inventoryItem = null;
+    let inventoryTx = null;
+    if (fromInventory) {
+      if (!inventoryItemId) {
+        return res.status(400).json({ error: 'inventoryItemId is required when fromInventory is true' });
+      }
+      const result = await takeFromInventory({
+        itemId: inventoryItemId,
+        quantity: parsedQuantity,
+        takenByUid: req.user.uid,
+        takenByName: req.user.name || '',
+        purpose: `Maintenance: ${record.description || record.maintenanceType || record.id}`,
+        authorizedBy,
+        authorizedAt,
+        equipmentId: record.equipmentId,
+        equipmentName: record.equipmentName,
+        maintenanceRecordId: req.params.id,
+      });
+      inventoryItem = result.item;
+      inventoryTx = result.transaction;
+    }
+
+    const effectiveUnitCost = unitCost !== undefined && unitCost !== null && unitCost !== ''
+      ? parseFloat(unitCost)
+      : (inventoryItem ? inventoryItem.unitCost : 0);
+
     const supplyId = uuidv4();
     const supply = {
       id: supplyId,
-      itemName,
-      partNumber: partNumber || '',
-      quantity: parseFloat(quantity),
-      unitCost: parseFloat(unitCost || 0),
-      totalItemCost: parseFloat(totalItemCost || 0),
-      takenBy,
-      authorizedBy,
+      itemName: itemName || inventoryItem.name,  // guarded: inventoryItem is set whenever itemName is absent
+      partNumber: partNumber || (inventoryItem ? inventoryItem.partNumber : '') || '',
+      quantity: parsedQuantity,
+      unitCost: effectiveUnitCost,
+      totalItemCost: totalItemCost ? parseFloat(totalItemCost) : +(parsedQuantity * effectiveUnitCost).toFixed(2),
+      takenBy: takenBy || req.user.name || req.user.uid,
+      authorizedBy: authorizedBy || null,
       authorizedAt: authorizedAt || new Date().toISOString(),
-      fromInventory: fromInventory || false,
+      fromInventory: !!fromInventory,
+      inventoryItemId: inventoryItemId || null,
+      inventoryTransactionId: inventoryTx ? inventoryTx.id : null,
       supplier: supplier || '',
       receiptUrl: receiptUrl || null,
       addedBy: req.user.uid,
       addedAt: new Date().toISOString(),
     };
 
-    const doc = await db.collection('maintenance_records').doc(req.params.id).get();
-    const existingSupplies = doc.data().suppliesUsed || [];
-    const existingPartsCost = doc.data().partsCost || 0;
+    const existingSupplies = record.suppliesUsed || [];
+    const existingPartsCost = record.partsCost || 0;
     const newPartsCost = existingPartsCost + supply.totalItemCost;
-    const laborCost = doc.data().laborCost || 0;
+    const laborCost = record.laborCost || 0;
 
     await db.collection('maintenance_records').doc(req.params.id).update({
       suppliesUsed: [...existingSupplies, supply],
@@ -202,7 +253,7 @@ router.post('/:id/supplies', authenticate, authorize('supervisor', 'admin'), asy
 
     res.status(201).json({ message: 'Supply added', supply });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -210,12 +261,35 @@ router.post('/:id/supplies', authenticate, authorize('supervisor', 'admin'), asy
 router.post('/:id/complete', authenticate, authorize('supervisor', 'admin'), async (req, res) => {
   try {
     const { finalNotes } = req.body;
+    const doc = await db.collection('maintenance_records').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Record not found' });
+    const record = doc.data();
+
     await db.collection('maintenance_records').doc(req.params.id).update({
       status: 'completed',
       completedAt: new Date().toISOString(),
       completedBy: req.user.uid,
       finalNotes: finalNotes || '',
     });
+
+    // Stamp equipment; release it only if no open repair tickets remain,
+    // and never lift out_of_service here (the ticket flow owns that state)
+    const equipDoc = await db.collection('equipment').doc(record.equipmentId).get();
+    if (equipDoc.exists) {
+      const equipUpdates = {
+        lastMaintenanceDate: record.maintenanceDate,
+        lastMaintenanceId: record.id,
+      };
+      if (equipDoc.data().status === 'maintenance') {
+        const openTickets = await db.collection('repair_tickets')
+          .where('equipmentId', '==', record.equipmentId)
+          .where('status', 'in', ['pending', 'approved', 'in_progress'])
+          .get();
+        if (openTickets.empty) equipUpdates.status = 'available';
+      }
+      await db.collection('equipment').doc(record.equipmentId).update(equipUpdates);
+    }
+
     res.json({ message: 'Maintenance record completed' });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -11,8 +11,13 @@ service cloud.firestore {
       return isAuth() && getUser().role == role;
     }
 
+    // User docs carry pay rates and FCM tokens: employees may read only
+    // their own profile; office roles may read the directory
     match /users/{userId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && (
+        request.auth.uid == userId ||
+        getUser().role in ['admin', 'manager', 'supervisor', 'accountant']
+      );
       allow write: if hasRole('admin');
     }
     match /sites/{siteId} {
@@ -41,5 +46,12 @@ service cloud.firestore {
       allow create: if isAuth();
       allow update, delete: if false; // Audit logs are immutable
     }
+
+    // Server-only collections — accessed exclusively through the backend
+    // Admin SDK (which bypasses these rules). No client rules are defined
+    // for them on purpose; rules v2 denies unmatched paths by default:
+    //   equipment, maintenance_records, maintenance_schedules, repair_tickets,
+    //   inspections, machine_hours_log, inventory, inventory_transactions,
+    //   reorder_requests, notifications, system
   }
 }

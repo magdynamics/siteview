@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { db, messaging } = require('../services/firebase');
+const { db } = require('../services/firebase');
+const { takeFromInventory } = require('../services/inventoryStock');
 const { authenticate, authorize } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
@@ -73,61 +74,21 @@ router.post('/:id/take', authenticate, async (req, res) => {
       maintenanceRecordId,
     } = req.body;
 
-    const doc = await db.collection('inventory').doc(req.params.id).get();
-    if (!doc.exists) return res.status(404).json({ error: 'Item not found' });
-
-    const item = doc.data();
-    const qty = parseFloat(quantity);
-
-    if (item.currentQty < qty) {
-      return res.status(400).json({ error: `Insufficient stock. Available: ${item.currentQty} ${item.unit}` });
-    }
-
-    const newQty = item.currentQty - qty;
-    await db.collection('inventory').doc(req.params.id).update({ currentQty: newQty });
-
-    // Log the transaction
-    const txId = uuidv4();
-    const transaction = {
-      id: txId,
+    const { transaction, newQty } = await takeFromInventory({
       itemId: req.params.id,
-      itemName: item.name,
-      partNumber: item.partNumber,
-      transactionType: 'take',
-      quantity: qty,
-      unit: item.unit,
-      unitCost: item.unitCost,
-      totalCost: qty * item.unitCost,
-      previousQty: item.currentQty,
-      newQty,
-      purpose: purpose || '',
-      takenBy: req.user.uid,
+      quantity,
+      takenByUid: req.user.uid,
       takenByName: req.user.name || '',
-      authorizedBy: authorizedBy || '',
-      authorizedAt: authorizedAt || new Date().toISOString(),
-      equipmentId: equipmentId || null,
-      equipmentName: equipmentName || null,
-      maintenanceRecordId: maintenanceRecordId || null,
-      siteId: item.siteId,
-      timestamp: new Date().toISOString(),
-    };
-
-    await db.collection('inventory_transactions').doc(txId).set(transaction);
-
-    // Low stock alert
-    if (newQty <= item.minQty) {
-      await notifyLowStock(item, newQty);
-    }
-
-    await db.collection('audit_logs').doc(uuidv4()).set({
-      action: 'INVENTORY_TAKE',
-      itemId: req.params.id, itemName: item.name,
-      quantity: qty, newQty,
-      performedBy: req.user.uid, timestamp: new Date().toISOString(),
+      purpose,
+      authorizedBy,
+      authorizedAt,
+      equipmentId,
+      equipmentName,
+      maintenanceRecordId,
     });
 
     res.status(201).json({ message: 'Items taken from inventory', transaction, newQty });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 });
 
 // ─── RESTOCK INVENTORY ────────────────────────────────────────────────────────
@@ -227,23 +188,5 @@ router.get('/transactions', authenticate, async (req, res) => {
     res.json(snapshot.docs.map(d => d.data()));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-
-async function notifyLowStock(item, currentQty) {
-  try {
-    const snapshot = await db.collection('users')
-      .where('assignedSiteId', '==', item.siteId)
-      .where('role', 'in', ['supervisor', 'admin'])
-      .get();
-    const tokens = snapshot.docs.map(d => d.data().fcmToken).filter(Boolean);
-    if (tokens.length === 0) return;
-    await messaging.sendEachForMulticast({
-      tokens,
-      notification: {
-        title: '⚠️ Low Inventory Alert',
-        body: `${item.name}: only ${currentQty} ${item.unit} remaining (min: ${item.minQty})`,
-      },
-    });
-  } catch {}
-}
 
 module.exports = router;

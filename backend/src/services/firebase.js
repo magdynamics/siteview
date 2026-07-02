@@ -12,6 +12,7 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
+db.settings({ ignoreUndefinedProperties: true });
 const storage = admin.storage();
 const auth = admin.auth();
 const messaging = admin.messaging();
