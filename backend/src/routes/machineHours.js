@@ -123,14 +123,20 @@ router.get('/summary/:equipmentId', authenticate, async (req, res) => {
     const totalMaintenanceCost = maintenanceSnap.docs.reduce((sum, d) => sum + (d.data().totalCost || 0), 0);
     const maintenanceCount = maintenanceSnap.docs.length;
 
-    res.json({
+    const summary = {
       equipment: equip,
       currentHours: equip.currentHours || 0,
-      totalMaintenanceCost: +totalMaintenanceCost.toFixed(2),
       maintenanceCount,
-      costPerHour: equip.currentHours > 0 ? +(totalMaintenanceCost / equip.currentHours).toFixed(2) : 0,
       schedules,
-    });
+    };
+
+    // Cost figures are office-only; employees keep the rest for logging hours
+    if (req.user.role !== 'employee') {
+      summary.totalMaintenanceCost = +totalMaintenanceCost.toFixed(2);
+      summary.costPerHour = equip.currentHours > 0 ? +(totalMaintenanceCost / equip.currentHours).toFixed(2) : 0;
+    }
+
+    res.json(summary);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

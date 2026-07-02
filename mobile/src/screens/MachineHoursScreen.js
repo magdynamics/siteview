@@ -112,7 +112,9 @@ export default function MachineHoursScreen() {
             {summary && (
               <View style={styles.summaryRow}>
                 <SummaryBox label="Current Hours" value={`${summary.currentHours} hrs`} />
-                <SummaryBox label="Maintenance Cost" value={`$${summary.totalMaintenanceCost}`} color="#e65100" />
+                {summary.totalMaintenanceCost !== undefined && (
+                  <SummaryBox label="Maintenance Cost" value={`$${summary.totalMaintenanceCost}`} color="#e65100" />
+                )}
                 <SummaryBox label="Records" value={summary.maintenanceCount} />
               </View>
             )}
