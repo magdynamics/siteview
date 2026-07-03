@@ -43,9 +43,25 @@ export default function MaintenanceView({ siteId }) {
   const approveTicket = async (id) => {
     const estimatedCost = prompt('Estimated cost ($):');
     const notes = prompt('Approval notes:') || '';
-    await api.post(`/repair-tickets/${id}/approve`, { estimatedCost, notes });
-    await loadTickets();
-    alert('Ticket approved');
+
+    // Optional technician assignment
+    let assignedTo = null;
+    try {
+      const res = await api.get('/employees');
+      const emps = res.data;
+      if (emps.length) {
+        const list = emps.map((e, i) => `${i + 1}. ${e.name}`).join('\n');
+        const pick = prompt(`Assign to (optional — leave blank to skip):\n${list}\n\nEnter number:`);
+        const chosen = emps[parseInt(pick, 10) - 1];
+        if (chosen) assignedTo = chosen.name;
+      }
+    } catch {}
+
+    try {
+      await api.post(`/repair-tickets/${id}/approve`, { estimatedCost, notes, assignedTo });
+      await loadTickets();
+      alert(assignedTo ? `Ticket approved and assigned to ${assignedTo}` : 'Ticket approved');
+    } catch (err) { alert(err.response?.data?.error || 'Approve failed'); }
   };
 
   const rejectTicket = async (id) => {
@@ -97,6 +113,7 @@ export default function MaintenanceView({ siteId }) {
         <div style={styles.card}>
           <div style={styles.cardHeader}>
             <h3 style={styles.cardTitle}>Repair Tickets</h3>
+            <button style={styles.btn} onClick={() => setShowNewTicket(true)}>+ New Ticket</button>
           </div>
           <table style={styles.table}>
             <thead>
@@ -253,6 +270,9 @@ export default function MaintenanceView({ siteId }) {
 
       {/* New Schedule Modal */}
       {showNewSchedule && <NewScheduleModal equipment={equipment} onClose={() => setShowNewSchedule(false)} onSave={async (data) => { try { await api.post('/maintenance-schedule', { ...data, siteId }); setShowNewSchedule(false); loadSchedules(); } catch (err) { alert(err.response?.data?.error || 'Failed to create schedule'); } }} />}
+
+      {/* New Ticket Modal */}
+      {showNewTicket && <NewTicketModal equipment={equipment} onClose={() => setShowNewTicket(false)} onSave={async (data) => { try { await api.post('/repair-tickets', { ...data, siteId }); setShowNewTicket(false); loadTickets(); } catch (err) { alert(err.response?.data?.error || 'Failed to create ticket'); } }} />}
     </div>
   );
 }
@@ -301,6 +321,52 @@ function NewScheduleModal({ equipment, onClose, onSave }) {
         <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
           <button style={styles.cancelBtn} onClick={onClose}>Cancel</button>
           <button style={styles.btn} onClick={() => onSave(form)}>Save Schedule</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewTicketModal({ equipment, onClose, onSave }) {
+  const [form, setForm] = useState({
+    equipmentId: '', equipmentName: '', priority: 'medium',
+    issueType: 'mechanical', description: '', isSafeToOperate: true,
+  });
+  const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  return (
+    <div style={styles.modalOverlay}>
+      <div style={styles.modal}>
+        <h3 style={{ margin: '0 0 16px', color: '#1a237e' }}>New Repair Ticket</h3>
+        <select style={styles.input} value={form.equipmentId} onChange={e => { const eq = equipment.find(x => x.id === e.target.value); update('equipmentId', e.target.value); update('equipmentName', eq?.name || ''); }}>
+          <option value="">Select Equipment</option>
+          {equipment.map(eq => <option key={eq.id} value={eq.id}>{eq.name} ({eq.typeName})</option>)}
+        </select>
+        <div style={styles.row}>
+          <select style={styles.input} value={form.priority} onChange={e => update('priority', e.target.value)}>
+            <option value="low">Low priority</option>
+            <option value="medium">Medium priority</option>
+            <option value="high">High priority</option>
+            <option value="critical">CRITICAL</option>
+          </select>
+          <select style={styles.input} value={form.issueType} onChange={e => update('issueType', e.target.value)}>
+            <option value="mechanical">Mechanical</option>
+            <option value="electrical">Electrical</option>
+            <option value="hydraulic">Hydraulic</option>
+            <option value="body">Body / Structure</option>
+            <option value="tires">Tires</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <textarea style={{ ...styles.input, minHeight: 80 }} placeholder="Describe the issue" value={form.description} onChange={e => update('description', e.target.value)} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <input type="checkbox" checked={form.isSafeToOperate} onChange={e => update('isSafeToOperate', e.target.checked)} />
+          <label style={styles.label}>Safe to operate while awaiting repair</label>
+        </div>
+        {!form.isSafeToOperate && <div style={{ color: '#b71c1c', fontSize: 12, marginBottom: 12 }}>⚠️ Equipment will be flagged out of service immediately.</div>}
+        <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+          <button style={styles.cancelBtn} onClick={onClose}>Cancel</button>
+          <button style={styles.btn} disabled={!form.equipmentId || !form.description} onClick={() => onSave(form)}>Create Ticket</button>
         </div>
       </div>
     </div>

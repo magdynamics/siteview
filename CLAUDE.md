@@ -59,7 +59,7 @@ The web app mirrors this: `web/src/pages/` is organized into `admin/`, `manager/
 
 ### Backend
 
-`backend/src/routes/` has one module per domain, all registered in `src/server.js`. Domains: time tracking (`punches`, `timesheets`), workforce (`auth`, `employees`, `sites`), equipment management (`equipment`, `machineHours`, `maintenance`, `maintenanceSchedule`, `repairTickets`, `technicians`, `inspections`, `healthDashboard`), plus `inventory`, `documents`, `photos`, `notifications`, `reports`.
+`backend/src/routes/` has one module per domain, all registered in `src/server.js`. Domains: time tracking (`punches`, `timesheets`), workforce (`auth`, `employees`, `sites`), equipment management (`equipment`, `machineHours`, `maintenance`, `maintenanceSchedule`, `repairTickets`, `technicians`, `inspections`, `healthDashboard`, `fleetReports` — utilization/downtime/compliance/idle-assets/cost-per-hour under `/api/fleet-reports`), plus `inventory`, `documents`, `photos`, `notifications`, `reports`.
 
 `backend/src/services/`: `firebase.js` (Admin SDK — Firestore + Storage), `pdf.js` (pdfkit) and `excel.js` (exceljs) for invoice/timesheet exports, `maintenanceRecords.js` (shared maintenance-record writer used by manual creation, schedule completion, and ticket completion), `inventoryStock.js` (stock decrement + transaction log shared by inventory and maintenance-supplies endpoints).
 

@@ -105,6 +105,49 @@ router.put('/:id', authenticate, authorize('admin', 'supervisor'), async (req, r
   }
 });
 
+// Transfer equipment to another site (idle machines instead of rentals)
+router.post('/:id/transfer', authenticate, authorize('supervisor', 'manager', 'admin'), async (req, res) => {
+  try {
+    const { toSiteId, reason } = req.body;
+    if (!toSiteId) return res.status(400).json({ error: 'toSiteId is required' });
+
+    const equipDoc = await db.collection('equipment').doc(req.params.id).get();
+    if (!equipDoc.exists) return res.status(404).json({ error: 'Equipment not found' });
+    const equip = equipDoc.data();
+
+    if (equip.status !== 'available') {
+      return res.status(400).json({ error: `Equipment is ${equip.status} — only available equipment can be transferred` });
+    }
+    if (equip.siteId === toSiteId) {
+      return res.status(400).json({ error: 'Equipment is already at that site' });
+    }
+
+    const siteDoc = await db.collection('sites').doc(toSiteId).get();
+    if (!siteDoc.exists) return res.status(400).json({ error: 'toSiteId does not match an existing site' });
+
+    await db.collection('equipment').doc(req.params.id).update({
+      siteId: toSiteId,
+      transferredAt: new Date().toISOString(),
+      transferredFrom: equip.siteId || null,
+    });
+
+    await db.collection('audit_logs').doc(uuidv4()).set({
+      action: 'EQUIPMENT_TRANSFERRED',
+      equipmentId: req.params.id,
+      equipmentName: equip.name,
+      fromSiteId: equip.siteId || null,
+      toSiteId,
+      reason: reason || '',
+      performedBy: req.user.uid,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({ message: `${equip.name} transferred to ${siteDoc.data().name}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Deactivate equipment
 router.delete('/:id', authenticate, authorize('admin'), async (req, res) => {
   try {

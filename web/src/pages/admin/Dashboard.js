@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import FleetReports from '../manager/FleetReports';
 
 export default function AdminDashboard() {
   const { profile, logout } = useAuth();
@@ -128,13 +129,13 @@ export default function AdminDashboard() {
           <div style={styles.logoSub}>SITE VIEW</div>
         </div>
         <nav>
-          {['employees', 'sites', 'equipment', 'equip-types'].map(tab => (
+          {['employees', 'sites', 'equipment', 'equip-types', 'fleet-reports'].map(tab => (
             <div
               key={tab}
               style={{ ...styles.navItem, ...(activeTab === tab ? styles.navItemActive : {}) }}
               onClick={() => setActiveTab(tab)}
             >
-              {tab === 'employees' ? '👷 Employees' : tab === 'sites' ? '🏗 Sites' : tab === 'equipment' ? '🔧 Equipment' : '📋 Equip Types'}
+              {tab === 'employees' ? '👷 Employees' : tab === 'sites' ? '🏗 Sites' : tab === 'equipment' ? '🔧 Equipment' : tab === 'equip-types' ? '📋 Equip Types' : '🚜 Fleet Reports'}
             </div>
           ))}
         </nav>
@@ -285,6 +286,15 @@ export default function AdminDashboard() {
                 <p style={{ fontSize: 12, color: '#888' }}>Common icons: 🚛 🏗 🔧 🚜 🚧 🪜 🔩 ⚙️</p>
               </Modal>
             )}
+          </>
+        )}
+
+        {activeTab === 'fleet-reports' && (
+          <>
+            <div style={styles.header}>
+              <h2 style={styles.pageTitle}>Fleet Reports</h2>
+            </div>
+            <FleetReports />
           </>
         )}
 

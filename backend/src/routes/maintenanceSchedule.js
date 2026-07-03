@@ -214,6 +214,60 @@ router.put('/:id', authenticate, authorize('supervisor', 'admin'), async (req, r
   }
 });
 
+// ─── REQUIRED PARTS FOR A SCHEDULE ───────────────────────────────────────────
+// Attach the parts a service consumes so stock can be checked before due day
+router.put('/:id/parts', authenticate, authorize('supervisor', 'admin'), async (req, res) => {
+  try {
+    const { parts } = req.body; // [{ inventoryItemId, quantity }]
+    if (!Array.isArray(parts)) return res.status(400).json({ error: 'parts must be an array' });
+
+    const doc = await db.collection('maintenance_schedules').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Schedule not found' });
+
+    const requiredParts = [];
+    for (const p of parts) {
+      const qty = parseFloat(p.quantity);
+      if (!p.inventoryItemId || isNaN(qty) || qty <= 0) {
+        return res.status(400).json({ error: 'each part needs inventoryItemId and a positive quantity' });
+      }
+      const itemDoc = await db.collection('inventory').doc(p.inventoryItemId).get();
+      if (!itemDoc.exists) return res.status(400).json({ error: `inventory item ${p.inventoryItemId} not found` });
+      const item = itemDoc.data();
+      requiredParts.push({
+        inventoryItemId: p.inventoryItemId,
+        itemName: item.name,
+        partNumber: item.partNumber || '',
+        unit: item.unit,
+        quantity: qty,
+      });
+    }
+
+    await db.collection('maintenance_schedules').doc(req.params.id).update({ requiredParts });
+    res.json({ message: 'Required parts saved', requiredParts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Stock check: is everything this service needs on the shelf?
+router.get('/:id/parts-check', authenticate, async (req, res) => {
+  try {
+    const doc = await db.collection('maintenance_schedules').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Schedule not found' });
+    const parts = doc.data().requiredParts || [];
+
+    const results = [];
+    for (const p of parts) {
+      const itemDoc = await db.collection('inventory').doc(p.inventoryItemId).get();
+      const inStock = itemDoc.exists ? (itemDoc.data().currentQty || 0) : 0;
+      results.push({ ...p, inStock, ok: inStock >= p.quantity, shortBy: Math.max(0, p.quantity - inStock) });
+    }
+    res.json({ ready: results.every(r => r.ok), parts: results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── PAUSE / RESUME SCHEDULE ──────────────────────────────────────────────────
 router.post('/:id/pause', authenticate, authorize('supervisor', 'admin'), async (req, res) => {
   try {
@@ -289,10 +343,75 @@ cron.schedule('0 7 * * *', async () => {
     }
 
     console.log('[Maintenance Reminders] Check complete');
+
+    await sendDailySiteDigests();
   } catch (err) {
     console.error('[Maintenance Reminders] Error:', err.message);
   }
 });
+
+// ─── DAILY SITE DIGEST ────────────────────────────────────────────────────────
+// One morning push per site: critical tickets, machines down, overdue
+// maintenance, and in-use equipment with stale inspections
+async function sendDailySiteDigests() {
+  const sitesSnap = await db.collection('sites').where('isActive', '==', true).get();
+  const staleCutoff = new Date(Date.now() - 24 * 3600000).toISOString();
+
+  for (const siteDoc of sitesSnap.docs) {
+    const site = siteDoc.data();
+    try {
+      const [equipSnap, ticketSnap, schedSnap] = await Promise.all([
+        db.collection('equipment').where('siteId', '==', site.id).where('isActive', '==', true).get(),
+        db.collection('repair_tickets').where('siteId', '==', site.id).get(),
+        db.collection('maintenance_schedules').where('siteId', '==', site.id).where('status', '==', 'overdue').get(),
+      ]);
+
+      const equipment = equipSnap.docs.map(d => d.data());
+      const down = equipment.filter(e => e.status === 'out_of_service');
+      const critical = ticketSnap.docs.map(d => d.data())
+        .filter(t => t.priority === 'critical' && ['pending', 'approved', 'in_progress'].includes(t.status));
+      const overdueCount = schedSnap.size;
+
+      const inUse = equipment.filter(e => e.status === 'in_use');
+      let staleInspections = 0;
+      for (const e of inUse) {
+        const insp = await db.collection('inspections')
+          .where('equipmentId', '==', e.id)
+          .orderBy('timestamp', 'desc').limit(1).get();
+        const last = insp.docs[0] ? insp.docs[0].data().timestamp : null;
+        if (!last || last < staleCutoff) staleInspections++;
+      }
+
+      if (!down.length && !critical.length && !overdueCount && !staleInspections) continue;
+
+      const lines = [];
+      if (critical.length) lines.push(`${critical.length} critical ticket(s)`);
+      if (down.length) lines.push(`${down.length} machine(s) out of service`);
+      if (overdueCount) lines.push(`${overdueCount} overdue maintenance`);
+      if (staleInspections) lines.push(`${staleInspections} in-use machine(s) missing daily inspection`);
+
+      const usersSnap = await db.collection('users')
+        .where('assignedSiteId', '==', site.id)
+        .where('isActive', '==', true)
+        .get();
+      const tokens = usersSnap.docs
+        .filter(d => ['supervisor', 'manager', 'admin'].includes(d.data().role))
+        .map(d => d.data().fcmToken)
+        .filter(Boolean);
+      if (!tokens.length) continue;
+
+      await messaging.sendEachForMulticast({
+        tokens,
+        notification: {
+          title: `📋 ${site.name} — morning fleet digest`,
+          body: lines.join(' · '),
+        },
+      });
+    } catch (err) {
+      console.error(`[Daily Digest] ${site.name}:`, err.message);
+    }
+  }
+}
 
 async function sendMaintenanceReminder(schedule, days, isOverdue) {
   try {
@@ -316,13 +435,24 @@ async function sendMaintenanceReminder(schedule, days, isOverdue) {
       ? `⚠️ Overdue Maintenance: ${schedule.equipmentName}`
       : `🔧 Maintenance Due: ${schedule.equipmentName}`;
 
-    const body = isOverdue
+    let body = isOverdue
       ? (days === null
           ? `${schedule.maintenanceType} is overdue on ${schedule.equipmentName}`
           : `${schedule.maintenanceType} is ${days} day(s) overdue on ${schedule.equipmentName}`)
       : days === 0
         ? `${schedule.maintenanceType} is due TODAY on ${schedule.equipmentName}`
         : `${schedule.maintenanceType} is due in ${days} day(s) on ${schedule.equipmentName}`;
+
+    // Warn if the service's parts aren't on the shelf
+    if (Array.isArray(schedule.requiredParts) && schedule.requiredParts.length) {
+      const short = [];
+      for (const p of schedule.requiredParts) {
+        const itemDoc = await db.collection('inventory').doc(p.inventoryItemId).get();
+        const inStock = itemDoc.exists ? (itemDoc.data().currentQty || 0) : 0;
+        if (inStock < p.quantity) short.push(p.itemName);
+      }
+      if (short.length) body += ` ⚠️ parts short: ${short.join(', ')}`;
+    }
 
     await messaging.sendEachForMulticast({ tokens, notification: { title, body } });
   } catch (err) {

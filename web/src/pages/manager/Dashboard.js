@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import FleetReports from './FleetReports';
 
 export default function ManagerDashboard() {
   const { profile, logout } = useAuth();
   const [report, setReport] = useState(null);
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [view, setView] = useState('overview');
 
   useEffect(() => {
     loadSites();
@@ -37,6 +39,15 @@ export default function ManagerDashboard() {
           <div style={styles.logoTitle}>BUILD CHAIN</div>
           <div style={styles.logoSub}>SITE VIEW</div>
         </div>
+        <nav>
+          {[['overview', '📊 Overview'], ['fleet', '🚜 Fleet Reports']].map(([key, label]) => (
+            <div key={key}
+              style={{ ...styles.navItem, ...(view === key ? styles.navItemActive : {}) }}
+              onClick={() => setView(key)}>
+              {label}
+            </div>
+          ))}
+        </nav>
         <div style={styles.sidebarBottom}>
           <div style={styles.userName}>{profile?.name}</div>
           <div style={styles.userRole}>Project Manager</div>
@@ -45,6 +56,17 @@ export default function ManagerDashboard() {
       </div>
 
       <div style={styles.main}>
+        {view === 'fleet' && (
+          <>
+            <div style={styles.header}>
+              <h2 style={styles.pageTitle}>Fleet Reports</h2>
+            </div>
+            <FleetReports />
+          </>
+        )}
+
+        {view === 'overview' && (
+        <>
         <div style={styles.header}>
           <h2 style={styles.pageTitle}>Project Overview</h2>
           <button style={styles.btn} onClick={loadWeeklyReport}>Refresh</button>
@@ -92,6 +114,8 @@ export default function ManagerDashboard() {
         )}
 
         {loading && <p style={{ textAlign: 'center', color: '#888' }}>Loading report...</p>}
+        </>
+        )}
       </div>
     </div>
   );
@@ -110,6 +134,8 @@ const styles = {
   logo: { padding: '0 20px 24px', borderBottom: '1px solid rgba(255,255,255,0.1)' },
   logoTitle: { fontSize: 18, fontWeight: 'bold', letterSpacing: 2 },
   logoSub: { fontSize: 11, color: '#aab2e8', letterSpacing: 4, marginTop: 2 },
+  navItem: { padding: '12px 20px', cursor: 'pointer', fontSize: 14, color: '#aab2e8' },
+  navItemActive: { background: 'rgba(255,255,255,0.1)', color: '#fff', borderLeft: '3px solid #fff' },
   sidebarBottom: { marginTop: 'auto', padding: '0 20px' },
   userName: { fontSize: 14, fontWeight: 'bold', color: '#fff' },
   userRole: { fontSize: 12, color: '#aab2e8', marginBottom: 12 },
