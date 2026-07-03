@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import FleetReports from './FleetReports';
+import ChangeOrdersView from '../supervisor/ChangeOrdersView';
 
 export default function ManagerDashboard() {
   const { profile, logout } = useAuth();
@@ -40,7 +41,7 @@ export default function ManagerDashboard() {
           <div style={styles.logoSub}>SITE VIEW</div>
         </div>
         <nav>
-          {[['overview', '📊 Overview'], ['fleet', '🚜 Fleet Reports']].map(([key, label]) => (
+          {[['overview', '📊 Overview'], ['fleet', '🚜 Fleet Reports'], ['change-orders', '📝 Change Orders']].map(([key, label]) => (
             <div key={key}
               style={{ ...styles.navItem, ...(view === key ? styles.navItemActive : {}) }}
               onClick={() => setView(key)}>
@@ -62,6 +63,15 @@ export default function ManagerDashboard() {
               <h2 style={styles.pageTitle}>Fleet Reports</h2>
             </div>
             <FleetReports />
+          </>
+        )}
+
+        {view === 'change-orders' && (
+          <>
+            <div style={styles.header}>
+              <h2 style={styles.pageTitle}>Change Orders</h2>
+            </div>
+            <ChangeOrdersView />
           </>
         )}
 

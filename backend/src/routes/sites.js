@@ -64,6 +64,22 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
+// Change-order threshold: editable by GC/PM (manager) or Owner/Investor (admin)
+router.patch('/:id/change-order-threshold', authenticate, authorize('manager', 'admin'), async (req, res) => {
+  try {
+    const threshold = parseFloat(req.body.changeOrderThreshold);
+    if (isNaN(threshold) || threshold < 0) {
+      return res.status(400).json({ error: 'changeOrderThreshold must be a non-negative number' });
+    }
+    const doc = await db.collection('sites').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Site not found' });
+    await db.collection('sites').doc(req.params.id).update({ changeOrderThreshold: threshold });
+    res.json({ message: 'Change-order threshold updated', changeOrderThreshold: threshold });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Update site
 router.put('/:id', authenticate, authorize('admin'), async (req, res) => {
   try {

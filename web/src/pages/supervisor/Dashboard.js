@@ -7,6 +7,8 @@ import EquipmentView from './EquipmentView';
 import InventoryView from './InventoryView';
 import MaterialsView from './MaterialsView';
 import TasksView from './TasksView';
+import PlansView from './PlansView';
+import ChangeOrdersView from './ChangeOrdersView';
 
 const STATUS_COLOR = { on_site: '#2e7d32', left: '#b71c1c', on_break: '#e65100', absent: '#888' };
 const STATUS_LABEL = { on_site: 'On Site', left: 'Left', on_break: 'On Break', absent: 'Absent' };
@@ -102,6 +104,8 @@ export default function SupervisorDashboard() {
             ['health', '❤️ Fleet Health'],
             ['materials', '🧱 Materials'],
             ['inventory', '📦 Inventory'],
+            ['plans', '📐 Plans'],
+            ['change-orders', '📝 Change Orders'],
           ].map(([tab, label]) => (
             <div
               key={tab}
@@ -128,6 +132,7 @@ export default function SupervisorDashboard() {
               {{
                 live: 'Live Site Status', tasks: 'Task Dispatch', timesheets: 'Timesheets', equipment: 'Equipment',
                 maintenance: 'Maintenance', health: 'Fleet Health', materials: 'Materials', inventory: 'Inventory',
+                plans: 'Plan Library', 'change-orders': 'Change Orders',
               }[activeTab]}
             </h2>
           </div>
@@ -244,6 +249,8 @@ export default function SupervisorDashboard() {
         {activeTab === 'health' && <HealthDashboard siteId={selectedSite} />}
         {activeTab === 'materials' && <MaterialsView siteId={selectedSite} />}
         {activeTab === 'inventory' && <InventoryView siteId={selectedSite} />}
+        {activeTab === 'plans' && <PlansView siteId={selectedSite} />}
+        {activeTab === 'change-orders' && <ChangeOrdersView siteId={selectedSite} />}
       </div>
     </div>
   );
