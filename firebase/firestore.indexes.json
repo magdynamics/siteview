@@ -95,6 +95,14 @@
         { "fieldPath": "employeeId", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "material_tickets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "materialId", "order": "ASCENDING" },
+        { "fieldPath": "loggedAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

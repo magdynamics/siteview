@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import MaintenanceView from './MaintenanceView';
+import HealthDashboard from './HealthDashboard';
+import EquipmentView from './EquipmentView';
+import InventoryView from './InventoryView';
+import MaterialsView from './MaterialsView';
 
 const STATUS_COLOR = { on_site: '#2e7d32', left: '#b71c1c', on_break: '#e65100', absent: '#888' };
 const STATUS_LABEL = { on_site: 'On Site', left: 'Left', on_break: 'On Break', absent: 'Absent' };
@@ -87,13 +92,21 @@ export default function SupervisorDashboard() {
           <div style={styles.logoSub}>SITE VIEW</div>
         </div>
         <nav>
-          {['live', 'timesheets', 'photos'].map(tab => (
+          {[
+            ['live', '👥 Live Site'],
+            ['timesheets', '📋 Timesheets'],
+            ['equipment', '🔧 Equipment'],
+            ['maintenance', '🔖 Maintenance'],
+            ['health', '❤️ Fleet Health'],
+            ['materials', '🧱 Materials'],
+            ['inventory', '📦 Inventory'],
+          ].map(([tab, label]) => (
             <div
               key={tab}
               style={{ ...styles.navItem, ...(activeTab === tab ? styles.navItemActive : {}) }}
               onClick={() => setActiveTab(tab)}
             >
-              {tab === 'live' ? '👥 Live Site' : tab === 'timesheets' ? '📋 Timesheets' : '📷 Photos'}
+              {label}
             </div>
           ))}
         </nav>
@@ -110,7 +123,10 @@ export default function SupervisorDashboard() {
         <div style={styles.header}>
           <div>
             <h2 style={styles.pageTitle}>
-              {activeTab === 'live' ? 'Live Site Status' : activeTab === 'timesheets' ? 'Timesheets' : 'Photos'}
+              {{
+                live: 'Live Site Status', timesheets: 'Timesheets', equipment: 'Equipment',
+                maintenance: 'Maintenance', health: 'Fleet Health', materials: 'Materials', inventory: 'Inventory',
+              }[activeTab]}
             </h2>
           </div>
           <select
@@ -219,6 +235,12 @@ export default function SupervisorDashboard() {
             )}
           </div>
         )}
+
+        {activeTab === 'equipment' && <EquipmentView siteId={selectedSite} />}
+        {activeTab === 'maintenance' && <MaintenanceView siteId={selectedSite} />}
+        {activeTab === 'health' && <HealthDashboard siteId={selectedSite} />}
+        {activeTab === 'materials' && <MaterialsView siteId={selectedSite} />}
+        {activeTab === 'inventory' && <InventoryView siteId={selectedSite} />}
       </div>
     </div>
   );
