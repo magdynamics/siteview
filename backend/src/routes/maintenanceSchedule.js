@@ -3,6 +3,7 @@ const router = express.Router();
 const cron = require('node-cron');
 const { db, messaging } = require('../services/firebase');
 const { createMaintenanceRecord } = require('../services/maintenanceRecords');
+const { ensureMaintenanceDueTicket } = require('../services/maintenanceTickets');
 const { authenticate, authorize } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
@@ -338,6 +339,9 @@ cron.schedule('0 7 * * *', async () => {
         if (schedule.status === 'active') {
           await db.collection('maintenance_schedules').doc(doc.id).update({ status: 'overdue' });
         }
+        await ensureMaintenanceDueTicket({ ...schedule, id: doc.id }, {
+          detail: `${Math.abs(daysUntil)} day(s) past due date ${schedule.nextDueDate}`,
+        });
         await sendMaintenanceReminder(schedule, Math.abs(daysUntil), true);
       }
     }

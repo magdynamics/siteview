@@ -64,7 +64,7 @@ router.post('/', authenticate, authorize('admin', 'supervisor'), async (req, res
   try {
     const {
       name, typeId, typeName, make, model,
-      serialNumber, licensePlate, siteId, notes
+      serialNumber, licensePlate, siteId, notes, fuelType
     } = req.body;
 
     if (!name) return res.status(400).json({ error: 'name is required' });
@@ -80,6 +80,7 @@ router.post('/', authenticate, authorize('admin', 'supervisor'), async (req, res
       serialNumber: serialNumber || '',
       licensePlate: licensePlate || '',
       siteId,
+      fuelType: fuelType || null,   // 'diesel' | 'gasoline' | 'electric' | null
       status: 'available', // available | in_use | maintenance | out_of_service
       assignedTo: null,
       assignedAt: null,

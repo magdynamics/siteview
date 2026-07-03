@@ -54,6 +54,9 @@ Firebase Authentication (email/password) on the clients. Clients send the Fireba
 | `accountant` | Web: timesheets, invoices, exports, documents |
 | `manager` | Web: all-sites overview, weekly reports |
 | `admin` | Everything + manage employees and sites |
+| `viewer` | Reserved: external read-only (municipality/lender) — no endpoints grant it yet; will receive compliance-dashboard access |
+
+Technical-guideline role mapping (SiteView_Technical_Guideline.md): Owner/Investor→admin, GC/PM→manager, Site Manager→supervisor, Foreman/Worker→employee, Accountant→accountant, Municipality/Lender→viewer.
 
 The web app mirrors this: `web/src/pages/` is organized into `admin/`, `manager/`, `supervisor/`, `accountant/` folders, with routing/role guards driven by `web/src/context/AuthContext.js`.
 
@@ -73,3 +76,5 @@ Employee-only app: punch in/out (GPS via expo-location), task photos, equipment/
 
 - Employees have `paymentType` of `hourly`, `daily`, or `contract`, each with its own rate field (`hourlyRate` / `dailyRate` / `contractAmount`) — this drives timesheet and invoice calculations.
 - Users are stored in the Firestore `users` collection keyed by Firebase Auth `uid`, with `role` and `isActive` fields.
+- A `sites` document is one construction project and carries project-level fields (`budgetTotal`, `currentPhase`, `stakeholders[]`, `changeOrderThreshold`, owner/GC/dates) per the technical guideline — there is no separate `projects` collection.
+- Punches snapshot the employee's pay rate at punch-in (`rateSnapshot`, `paymentTypeSnapshot`); punch-out validates an open punch-in exists and flags shifts over 12 hours (`flagged`).

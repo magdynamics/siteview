@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const { db, messaging } = require('../services/firebase');
+const { ensureMaintenanceDueTicket } = require('../services/maintenanceTickets');
 const { authenticate } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
 // ─── LOG MACHINE HOURS ────────────────────────────────────────────────────────
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { equipmentId, equipmentName, siteId, hours, odometerReading, fuelAdded, notes } = req.body;
+    const { equipmentId, equipmentName, siteId, hours, odometerReading, fuelAdded, fuelCost, notes } = req.body;
 
     const today = new Date().toISOString().split('T')[0];
     const logId = uuidv4();
@@ -32,6 +33,7 @@ router.post('/', authenticate, async (req, res) => {
       hoursAdded: +hoursAdded.toFixed(1),
       odometerReading: odometerReading ? parseFloat(odometerReading) : null,
       fuelAdded: fuelAdded ? parseFloat(fuelAdded) : null,
+      fuelCost: fuelCost ? parseFloat(fuelCost) : null,
       notes: notes || '',
       loggedBy: req.user.uid,
       loggedByName: req.user.name || '',
@@ -62,9 +64,13 @@ router.post('/', authenticate, async (req, res) => {
       const hoursUntilDue = schedule.nextDueHours - parsedHours;
 
       if (hoursUntilDue <= 0) {
-        // Overdue
+        // Overdue: flag the schedule and drop an actionable ticket in the queue
         await db.collection('maintenance_schedules').doc(sDoc.id).update({ status: 'overdue' });
         alerts.push({ type: 'overdue', schedule, hoursOverdue: Math.abs(hoursUntilDue) });
+        await ensureMaintenanceDueTicket({ ...schedule, id: sDoc.id }, {
+          detail: `${Math.abs(hoursUntilDue).toFixed(0)} hrs past due at ${parsedHours} hrs`,
+          createdByUid: req.user.uid,
+        });
         await sendHoursAlert(siteId, equipmentName, schedule.maintenanceType, hoursUntilDue, true);
       } else if (hoursUntilDue <= 50) {
         // Due soon (within 50 hours)

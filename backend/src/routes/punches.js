@@ -30,6 +30,11 @@ router.post('/in', authenticate, async (req, res) => {
     }
 
     const punchId = uuidv4();
+    // Snapshot the pay rate at punch time so later rate changes don't rewrite history
+    const rateSnapshot = employee.paymentType === 'hourly' ? (employee.hourlyRate || 0)
+      : employee.paymentType === 'daily' ? (employee.dailyRate || 0)
+      : (employee.contractAmount || 0);
+
     const punch = {
       id: punchId,
       employeeId: targetEmployeeId,
@@ -42,6 +47,8 @@ router.post('/in', authenticate, async (req, res) => {
       performedBy: performedBy,
       note: note || null,
       status: 'active',
+      paymentTypeSnapshot: employee.paymentType || null,
+      rateSnapshot,
     };
 
     await db.collection('punches').doc(punchId).set(punch);
@@ -70,6 +77,28 @@ router.post('/out', authenticate, async (req, res) => {
     const targetEmployeeId = isManual ? employeeId : req.user.uid;
 
     const punchType = breakType ? `break_${breakType}` : 'out';
+    const now = new Date();
+
+    // Validate against today's punches: must have an open punch-in, and
+    // shifts over 12 hours get flagged for manager review
+    let durationHours = null;
+    let flagged = false;
+    if (punchType === 'out') {
+      const todayStr = now.toISOString().split('T')[0];
+      const todaySnap = await db.collection('punches')
+        .where('employeeId', '==', targetEmployeeId)
+        .where('timestamp', '>=', `${todayStr}T00:00:00.000Z`)
+        .get();
+      const todayPunches = todaySnap.docs.map(d => d.data())
+        .filter(p => ['in', 'out'].includes(p.type))
+        .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      const last = todayPunches[todayPunches.length - 1];
+      if (!last || last.type !== 'in') {
+        return res.status(400).json({ error: 'No active punch-in found for today' });
+      }
+      durationHours = +((now - new Date(last.timestamp)) / 3600000).toFixed(2);
+      if (durationHours > 12) flagged = true;
+    }
 
     const punchId = uuidv4();
     const punch = {
@@ -77,12 +106,15 @@ router.post('/out', authenticate, async (req, res) => {
       employeeId: targetEmployeeId,
       siteId,
       type: punchType,
-      timestamp: new Date().toISOString(),
+      timestamp: now.toISOString(),
       latitude: latitude || null,
       longitude: longitude || null,
       isManual: isManual || false,
       performedBy: isManual ? req.user.uid : null,
       note: note || null,
+      durationHours,
+      flagged,
+      flagReason: flagged ? `Shift over 12 hours (${durationHours} hrs) — review required` : null,
     };
 
     await db.collection('punches').doc(punchId).set(punch);

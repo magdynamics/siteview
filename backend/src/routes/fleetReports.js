@@ -192,30 +192,80 @@ router.get('/idle-assets', authenticate, readRoles, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── COST PER OPERATING HOUR (fleet ranking) ─────────────────────────────────
+// ─── COST PER OPERATING HOUR (fleet ranking, maintenance + fuel) ─────────────
 router.get('/cost-per-hour', authenticate, readRoles, async (req, res) => {
   try {
-    const [equipment, recSnap] = await Promise.all([
+    const [equipment, recSnap, fuelSnap] = await Promise.all([
       getEquipment(req.query.siteId),
       db.collection('maintenance_records').get(),
+      db.collection('machine_hours_log').get(),
     ]);
-    const costByEquip = {};
+    const maintByEquip = {};
     recSnap.docs.forEach(d => {
       const r = d.data();
-      costByEquip[r.equipmentId] = (costByEquip[r.equipmentId] || 0) + (r.totalCost || 0);
+      maintByEquip[r.equipmentId] = (maintByEquip[r.equipmentId] || 0) + (r.totalCost || 0);
+    });
+    const fuelByEquip = {};
+    fuelSnap.docs.forEach(d => {
+      const log = d.data();
+      if (log.fuelCost) fuelByEquip[log.equipmentId] = (fuelByEquip[log.equipmentId] || 0) + log.fuelCost;
     });
     const rows = equipment.map(e => {
-      const totalCost = +(costByEquip[e.id] || 0).toFixed(2);
+      const maintenanceCost = +(maintByEquip[e.id] || 0).toFixed(2);
+      const fuelCost = +(fuelByEquip[e.id] || 0).toFixed(2);
+      const totalOperatingCost = +(maintenanceCost + fuelCost).toFixed(2);
       return {
         equipmentId: e.id,
         equipmentName: e.name,
         siteId: e.siteId,
         currentHours: e.currentHours || 0,
-        totalMaintenanceCost: totalCost,
-        costPerHour: e.currentHours > 0 ? +(totalCost / e.currentHours).toFixed(2) : null,
+        totalMaintenanceCost: maintenanceCost,
+        totalFuelCost: fuelCost,
+        totalOperatingCost,
+        costPerHour: e.currentHours > 0 ? +(totalOperatingCost / e.currentHours).toFixed(2) : null,
       };
     }).sort((a, b) => (b.costPerHour || 0) - (a.costPerHour || 0));
     res.json({ equipment: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── FUEL USAGE ───────────────────────────────────────────────────────────────
+router.get('/fuel', authenticate, readRoles, async (req, res) => {
+  try {
+    const period = parsePeriod(req, 30);
+    const [equipment, logSnap] = await Promise.all([
+      getEquipment(req.query.siteId),
+      db.collection('machine_hours_log')
+        .where('date', '>=', period.start)
+        .where('date', '<=', period.end)
+        .get(),
+    ]);
+    const byEquip = {};
+    logSnap.docs.forEach(d => {
+      const log = d.data();
+      if (!log.fuelAdded && !log.fuelCost) return;
+      if (!byEquip[log.equipmentId]) byEquip[log.equipmentId] = { fuel: 0, cost: 0, fills: 0 };
+      byEquip[log.equipmentId].fuel += log.fuelAdded || 0;
+      byEquip[log.equipmentId].cost += log.fuelCost || 0;
+      byEquip[log.equipmentId].fills++;
+    });
+    const rows = equipment
+      .filter(e => byEquip[e.id])
+      .map(e => ({
+        equipmentId: e.id,
+        equipmentName: e.name,
+        siteId: e.siteId,
+        fuelType: e.fuelType || null,
+        totalFuel: +byEquip[e.id].fuel.toFixed(1),
+        totalFuelCost: +byEquip[e.id].cost.toFixed(2),
+        fillUps: byEquip[e.id].fills,
+      }))
+      .sort((a, b) => b.totalFuelCost - a.totalFuelCost);
+    res.json({
+      period,
+      totalFuelCost: +rows.reduce((s, r) => s + r.totalFuelCost, 0).toFixed(2),
+      equipment: rows,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
