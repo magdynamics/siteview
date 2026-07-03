@@ -1,0 +1,15 @@
+{
+  "short_name": "SiteView",
+  "name": "SiteView — Build Chain",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1a237e",
+  "background_color": "#f5f5f5"
+}
