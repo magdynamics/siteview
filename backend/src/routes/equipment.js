@@ -67,6 +67,11 @@ router.post('/', authenticate, authorize('admin', 'supervisor'), async (req, res
       serialNumber, licensePlate, siteId, notes
     } = req.body;
 
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    if (!siteId) return res.status(400).json({ error: 'siteId is required' });
+    const siteDoc = await db.collection('sites').doc(siteId).get();
+    if (!siteDoc.exists) return res.status(400).json({ error: 'siteId does not match an existing site' });
+
     const id = uuidv4();
     const equipment = {
       id, name, typeId, typeName,
@@ -74,7 +79,7 @@ router.post('/', authenticate, authorize('admin', 'supervisor'), async (req, res
       model: model || '',
       serialNumber: serialNumber || '',
       licensePlate: licensePlate || '',
-      siteId: siteId || '',
+      siteId,
       status: 'available', // available | in_use | maintenance | out_of_service
       assignedTo: null,
       assignedAt: null,
