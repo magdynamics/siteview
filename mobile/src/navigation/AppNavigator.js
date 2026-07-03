@@ -13,6 +13,7 @@ import DocumentScanScreen from '../screens/DocumentScanScreen';
 import EquipmentScreen from '../screens/EquipmentScreen';
 import InspectionScreen from '../screens/InspectionScreen';
 import MachineHoursScreen from '../screens/MachineHoursScreen';
+import MyTasksScreen from '../screens/MyTasksScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -31,6 +32,11 @@ function EmployeeTabs() {
         name="Dashboard"
         component={DashboardScreen}
         options={{ tabBarLabel: t('dashboard'), tabBarIcon: () => <Text>🏠</Text> }}
+      />
+      <Tab.Screen
+        name="MyTasks"
+        component={MyTasksScreen}
+        options={{ tabBarLabel: t('myTasks'), tabBarIcon: () => <Text>📌</Text> }}
       />
       <Tab.Screen
         name="Tasks"

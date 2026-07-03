@@ -20,9 +20,13 @@ router.get('/types', authenticate, async (req, res) => {
 // Add a new equipment type (e.g. "Bobcat", "Crane", "Lift", "Vehicle")
 router.post('/types', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const { name, icon } = req.body;
+    const { name, icon, defaultHourlyRate } = req.body;
     const id = uuidv4();
-    const type = { id, name, icon: icon || '🔧', createdAt: new Date().toISOString() };
+    const type = {
+      id, name, icon: icon || '🔧',
+      defaultHourlyRate: defaultHourlyRate ? parseFloat(defaultHourlyRate) : 0,  // used for task cost estimates
+      createdAt: new Date().toISOString(),
+    };
     await db.collection('equipment_types').doc(id).set(type);
     res.status(201).json({ message: 'Equipment type created', type });
   } catch (err) {

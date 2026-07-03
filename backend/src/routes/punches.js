@@ -7,7 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 // Employee punches in
 router.post('/in', authenticate, async (req, res) => {
   try {
-    const { siteId, latitude, longitude, isManual, employeeId, note } = req.body;
+    const { siteId, latitude, longitude, isManual, employeeId, note, taskId } = req.body;
     const targetEmployeeId = isManual ? employeeId : req.user.uid;
     const performedBy = isManual ? req.user.uid : null;
 
@@ -49,6 +49,7 @@ router.post('/in', authenticate, async (req, res) => {
       status: 'active',
       paymentTypeSnapshot: employee.paymentType || null,
       rateSnapshot,
+      taskId: taskId || null,   // labor rolls up to task cost when set
     };
 
     await db.collection('punches').doc(punchId).set(punch);
@@ -98,6 +99,9 @@ router.post('/out', authenticate, async (req, res) => {
       }
       durationHours = +((now - new Date(last.timestamp)) / 3600000).toFixed(2);
       if (durationHours > 12) flagged = true;
+      // inherit task + rate from the matched punch-in so task costing can
+      // sum out-punches alone
+      var matchedIn = last;
     }
 
     const punchId = uuidv4();
@@ -115,6 +119,9 @@ router.post('/out', authenticate, async (req, res) => {
       durationHours,
       flagged,
       flagReason: flagged ? `Shift over 12 hours (${durationHours} hrs) — review required` : null,
+      taskId: (typeof matchedIn !== 'undefined' && matchedIn.taskId) || null,
+      paymentTypeSnapshot: (typeof matchedIn !== 'undefined' && matchedIn.paymentTypeSnapshot) || null,
+      rateSnapshot: (typeof matchedIn !== 'undefined' && matchedIn.rateSnapshot) || null,
     };
 
     await db.collection('punches').doc(punchId).set(punch);

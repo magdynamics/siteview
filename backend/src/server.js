@@ -49,6 +49,7 @@ app.use('/api/technicians', require('./routes/technicians'));
 app.use('/api/health', require('./routes/healthDashboard'));
 app.use('/api/fleet-reports', require('./routes/fleetReports'));
 app.use('/api/materials', require('./routes/materials'));
+app.use('/api/tasks', require('./routes/tasks'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', app: 'SiteView by Build Chain' });
