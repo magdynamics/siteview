@@ -79,9 +79,10 @@ router.post('/', authenticate, async (req, res) => {
       await db.collection('equipment').doc(equipmentId).update({ status: 'out_of_service' });
 
       const siteDoc = await db.collection('sites').doc(siteId).get();
-      if (siteDoc.exists) {
-        const supervisorDoc = await db.collection('users').doc(siteDoc.data().supervisorId).get();
-        if (supervisorDoc.exists?.fcmToken) {
+      const supervisorId = siteDoc.exists ? siteDoc.data().supervisorId : null;
+      if (supervisorId) {
+        const supervisorDoc = await db.collection('users').doc(supervisorId).get();
+        if (supervisorDoc.exists && supervisorDoc.data().fcmToken) {
           await messaging.send({
             token: supervisorDoc.data().fcmToken,
             notification: {

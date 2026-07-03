@@ -18,6 +18,8 @@ router.post('/task', authenticate, upload.single('photo'), async (req, res) => {
     const bucket = storage.bucket();
     const file = bucket.file(fileName);
 
+    // Tokenized download URL instead of a world-readable public file
+    const downloadToken = uuidv4();
     await file.save(req.file.buffer, {
       metadata: {
         contentType: req.file.mimetype,
@@ -27,12 +29,12 @@ router.post('/task', authenticate, upload.single('photo'), async (req, res) => {
           siteId,
           latitude: latitude || '',
           longitude: longitude || '',
+          firebaseStorageDownloadTokens: downloadToken,
         },
       },
     });
 
-    await file.makePublic();
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
 
     const photoRecord = {
       id: photoId,

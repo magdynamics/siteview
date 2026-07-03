@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const { db, auth } = require('../services/firebase');
 const { authenticate, authorize } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
@@ -9,10 +10,24 @@ router.post('/', authenticate, authorize('admin'), async (req, res) => {
   try {
     const {
       name, email, phone, role, assignedSiteId,
-      paymentType, hourlyRate, dailyRate, contractAmount, language
+      paymentType, hourlyRate, dailyRate, contractAmount, language, password
     } = req.body;
 
-    const userRecord = await auth.createUser({ email, displayName: name });
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    if (!email) return res.status(400).json({ error: 'email is required' });
+
+    // Accounts need a password to sign in; generate a temporary one if not provided
+    const initialPassword = password || crypto.randomBytes(9).toString('base64url');
+
+    let userRecord;
+    try {
+      userRecord = await auth.createUser({ email, displayName: name, password: initialPassword });
+    } catch (e) {
+      if (e.code === 'auth/email-already-exists') return res.status(409).json({ error: 'An account with this email already exists' });
+      if (e.code === 'auth/invalid-email') return res.status(400).json({ error: 'Invalid email address' });
+      if (e.code === 'auth/invalid-password') return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      throw e;
+    }
 
     const employee = {
       uid: userRecord.uid,
@@ -31,7 +46,12 @@ router.post('/', authenticate, authorize('admin'), async (req, res) => {
     };
 
     await db.collection('users').doc(userRecord.uid).set(employee);
-    res.status(201).json({ message: 'Employee created', employee });
+    res.status(201).json({
+      message: 'Employee created',
+      employee,
+      // Only returned when the password was generated server-side
+      temporaryPassword: password ? undefined : initialPassword,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

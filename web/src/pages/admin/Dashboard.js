@@ -90,8 +90,11 @@ export default function AdminDashboard() {
 
   const addEmployee = async () => {
     try {
-      await api.post('/employees', newEmployee);
-      alert('Employee created successfully');
+      const res = await api.post('/employees', newEmployee);
+      const tempPw = res.data.temporaryPassword;
+      alert(tempPw
+        ? `Employee created.\n\nTemporary password: ${tempPw}\n\nShare it with the employee now — it won't be shown again.`
+        : 'Employee created successfully');
       setShowAddEmployee(false);
       setNewEmployee({ name: '', email: '', phone: '', role: 'employee', assignedSiteId: '', paymentType: 'hourly', hourlyRate: '', dailyRate: '', contractAmount: '', language: 'en' });
       loadEmployees();
