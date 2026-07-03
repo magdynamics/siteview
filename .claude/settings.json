@@ -3,7 +3,8 @@
     "allow": [
       "Bash(node --check *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(git push origin *)"
     ]
   }
 }
