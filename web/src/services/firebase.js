@@ -1,14 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
-// Replace with your Firebase config
 const firebaseConfig = {
-  apiKey: 'YOUR_API_KEY',
-  authDomain: 'YOUR_PROJECT_ID.firebaseapp.com',
-  projectId: 'YOUR_PROJECT_ID',
-  storageBucket: 'YOUR_PROJECT_ID.appspot.com',
-  messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-  appId: 'YOUR_APP_ID',
+  apiKey: 'AIzaSyCf1DsG48iQf_GDhaAkKOkCnU6IffyUlCI',
+  authDomain: 'siteview-buildchain.firebaseapp.com',
+  projectId: 'siteview-buildchain',
+  storageBucket: 'siteview-buildchain.firebasestorage.app',
+  messagingSenderId: '1081062560185',
+  appId: '1:1081062560185:web:50e59c7eb1602718a16668',
 };
 
 const app = initializeApp(firebaseConfig);
