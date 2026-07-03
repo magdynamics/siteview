@@ -13,6 +13,17 @@ function RoleRouter() {
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading SiteView...</div>;
   if (!user) return <Navigate to="/login" />;
 
+  if (!profile) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', gap: 12 }}>
+        <div>Signed in, but your profile could not be loaded from the API.</div>
+        <div style={{ color: '#888', fontSize: 14 }}>
+          Check that the backend is reachable at {process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}, then refresh.
+        </div>
+      </div>
+    );
+  }
+
   switch (profile?.role) {
     case 'supervisor': return <Navigate to="/supervisor" />;
     case 'accountant': return <Navigate to="/accountant" />;

@@ -14,10 +14,14 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
+        setLoading(true);
         try {
           const res = await api.get('/auth/me');
           setProfile(res.data);
-        } catch {}
+        } catch (err) {
+          console.error('Failed to load profile from API:', err.message);
+          setProfile(null);
+        }
       } else {
         setUser(null);
         setProfile(null);
