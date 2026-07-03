@@ -29,6 +29,7 @@ router.post('/', authenticate, authorize('admin', 'supervisor'), async (req, res
       unit,          // 'each' | 'liter' | 'gallon' | 'kg' | 'box'
       currentQty, minQty, maxQty,
       unitCost, supplier,
+      leadTimeDays,  // how long the supplier takes to deliver
       siteId, location,  // where on site it's stored
       compatibleEquipment,  // array of equipment IDs or types
       notes,
@@ -42,6 +43,7 @@ router.post('/', authenticate, authorize('admin', 'supervisor'), async (req, res
       minQty: parseFloat(minQty),
       maxQty: parseFloat(maxQty || 999),
       unitCost: parseFloat(unitCost || 0),
+      leadTimeDays: leadTimeDays ? parseInt(leadTimeDays) : 0,
       supplier: supplier || '',
       siteId, location: location || '',
       compatibleEquipment: compatibleEquipment || [],
@@ -61,6 +63,57 @@ router.put('/:id', authenticate, authorize('admin', 'supervisor'), async (req, r
   try {
     await db.collection('inventory').doc(req.params.id).update(req.body);
     res.json({ message: 'Item updated' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── REORDER STATUS (lead-time aware) ────────────────────────────────────────
+// Reorder point = minQty + (average daily consumption × supplier lead time),
+// so stock ordered today arrives before the shelf hits minimum
+router.get('/reorder-status', authenticate, authorize('supervisor', 'accountant', 'admin'), async (req, res) => {
+  try {
+    const lookbackDays = parseInt(req.query.lookbackDays) || 60;
+    const since = new Date(Date.now() - lookbackDays * 86400000).toISOString();
+
+    let itemQuery = db.collection('inventory').where('isActive', '==', true);
+    if (req.query.siteId) itemQuery = itemQuery.where('siteId', '==', req.query.siteId);
+    const [itemSnap, txSnap] = await Promise.all([
+      itemQuery.get(),
+      db.collection('inventory_transactions').where('timestamp', '>=', since).get(),
+    ]);
+
+    const usage = {};
+    txSnap.docs.forEach(d => {
+      const tx = d.data();
+      if (tx.transactionType === 'take') usage[tx.itemId] = (usage[tx.itemId] || 0) + tx.quantity;
+    });
+
+    const rows = itemSnap.docs.map(d => {
+      const item = d.data();
+      const avgDailyUse = +((usage[item.id] || 0) / lookbackDays).toFixed(3);
+      const leadTimeDays = item.leadTimeDays || 0;
+      const reorderPoint = +(item.minQty + avgDailyUse * leadTimeDays).toFixed(1);
+      const daysOfStock = avgDailyUse > 0 ? +(item.currentQty / avgDailyUse).toFixed(0) : null;
+      return {
+        itemId: item.id,
+        name: item.name,
+        partNumber: item.partNumber,
+        unit: item.unit,
+        siteId: item.siteId,
+        currentQty: item.currentQty,
+        minQty: item.minQty,
+        leadTimeDays,
+        avgDailyUse,
+        daysOfStock,
+        reorderPoint,
+        needsReorder: item.currentQty <= reorderPoint,
+      };
+    }).sort((a, b) => (b.needsReorder ? 1 : 0) - (a.needsReorder ? 1 : 0) || (a.daysOfStock || 9999) - (b.daysOfStock || 9999));
+
+    res.json({
+      lookbackDays,
+      needsReorder: rows.filter(r => r.needsReorder).length,
+      items: rows,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -26,6 +26,8 @@ export default {
     onBreak: 'On Break',
     confirmPunchOut: 'Confirm Punch Out',
     confirmPunchOutMsg: 'Are you sure you want to punch out?',
+    hoursLogReminder: 'Machine hours not logged',
+    hoursLogReminderMsg: 'Please log today\'s machine hours for:',
     confirm: 'Confirm',
     cancel: 'Cancel',
 

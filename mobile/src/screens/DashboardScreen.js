@@ -99,12 +99,19 @@ export default function DashboardScreen() {
           setLoading(true);
           try {
             const loc = await Location.getCurrentPositionAsync({});
-            await punchOut({
+            const res = await punchOut({
               siteId: profile.assignedSiteId,
               latitude: loc.coords.latitude,
               longitude: loc.coords.longitude,
             });
             await loadTodayPunches();
+            const needed = res.data?.hoursLogNeeded;
+            if (needed?.length) {
+              Alert.alert(
+                t('hoursLogReminder'),
+                `${t('hoursLogReminderMsg')}\n${needed.map(e => `• ${e.name}`).join('\n')}`
+              );
+            }
           } catch (err) {
             Alert.alert('Error', t('networkError'));
           } finally {

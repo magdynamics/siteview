@@ -10,20 +10,22 @@ export default function FleetReports() {
   const [compliance, setCompliance] = useState(null);
   const [idle, setIdle] = useState(null);
   const [cost, setCost] = useState(null);
+  const [labor, setLabor] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     const q = siteId ? `?siteId=${siteId}` : '';
     try {
-      const [u, d, c, i, ch] = await Promise.all([
+      const [u, d, c, i, ch, li] = await Promise.all([
         api.get(`/fleet-reports/utilization${q}`),
         api.get(`/fleet-reports/downtime${q}`),
         api.get(`/fleet-reports/maintenance-compliance${q}`),
         api.get(`/fleet-reports/idle-assets${q}`),
         api.get(`/fleet-reports/cost-per-hour${q}`),
+        api.get(`/fleet-reports/labor-impact${q}`),
       ]);
-      setUtil(u.data); setDown(d.data); setCompliance(c.data); setIdle(i.data); setCost(ch.data);
+      setUtil(u.data); setDown(d.data); setCompliance(c.data); setIdle(i.data); setCost(ch.data); setLabor(li.data);
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to load fleet reports');
     } finally { setLoading(false); }
@@ -145,6 +147,28 @@ export default function FleetReports() {
           </tbody>
         </table>
       </Section>
+
+      {/* Labor exposure to downtime */}
+      {labor?.outages.length > 0 && (
+        <Section title={`👷 Labor Exposed to Downtime — est. ${labor.totalEstimatedLaborHoursExposed} hrs`}>
+          <div style={{ ...styles.dim, marginBottom: 10 }}>{labor.note}</div>
+          <table style={styles.table}>
+            <thead><tr>{['Equipment', 'Site', 'Status', 'Outage', 'Crew Present', 'Est. Labor Hours'].map(h => <th key={h} style={styles.th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {labor.outages.map(o => (
+                <tr key={o.ticketId} style={styles.tr}>
+                  <td style={styles.td}><strong>{o.equipmentName}</strong></td>
+                  <td style={styles.td}>{siteName(o.siteId)}</td>
+                  <td style={styles.td}>{o.status}</td>
+                  <td style={styles.td}>{o.downtimeHours} hrs</td>
+                  <td style={styles.td}>{o.crewPresent}</td>
+                  <td style={{ ...styles.td, fontWeight: 'bold', color: o.estimatedLaborHoursExposed > 0 ? '#b71c1c' : '#333' }}>{o.estimatedLaborHoursExposed}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
+      )}
 
       {/* Compliance + cost per hour */}
       <div style={{ display: 'flex', gap: 16 }}>

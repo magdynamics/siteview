@@ -26,6 +26,8 @@ export default {
     onBreak: 'En descanso',
     confirmPunchOut: 'Confirmar salida',
     confirmPunchOutMsg: '¿Estás seguro de que quieres registrar tu salida?',
+    hoursLogReminder: 'Horas de máquina sin registrar',
+    hoursLogReminderMsg: 'Por favor registra las horas de máquina de hoy para:',
     confirm: 'Confirmar',
     cancel: 'Cancelar',
 

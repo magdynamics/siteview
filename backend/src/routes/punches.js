@@ -97,7 +97,20 @@ router.post('/out', authenticate, async (req, res) => {
       timestamp: punch.timestamp,
     });
 
-    res.status(201).json({ message: 'Punched out successfully', punch });
+    // Nudge: equipment checked out to this employee with no hours logged today
+    let hoursLogNeeded = [];
+    if (punchType === 'out') {
+      const today = new Date().toISOString().split('T')[0];
+      const equipSnap = await db.collection('equipment')
+        .where('assignedTo', '==', targetEmployeeId)
+        .get();
+      hoursLogNeeded = equipSnap.docs
+        .map(d => d.data())
+        .filter(e => e.isActive !== false && e.lastHoursLogDate !== today)
+        .map(e => ({ id: e.id, name: e.name }));
+    }
+
+    res.status(201).json({ message: 'Punched out successfully', punch, hoursLogNeeded });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -219,4 +219,95 @@ router.get('/cost-per-hour', authenticate, readRoles, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── MAINTENANCE WINDOW SUGGESTION ───────────────────────────────────────────
+// Weekday usage profile from hours logs; the lowest-usage day is the best
+// time to schedule a service without stealing productive hours
+router.get('/maintenance-windows/:equipmentId', authenticate, readRoles, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 60;
+    const start = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+
+    const snap = await db.collection('machine_hours_log')
+      .where('equipmentId', '==', req.params.equipmentId)
+      .where('date', '>=', start)
+      .orderBy('date', 'desc')   // matches the deployed (equipmentId, date desc) index
+      .get();
+
+    const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const byWeekday = Array(7).fill(0);
+    const samples = Array(7).fill(0);
+    snap.docs.forEach(d => {
+      const log = d.data();
+      const wd = new Date(log.date).getUTCDay();
+      byWeekday[wd] += log.hoursAdded || 0;
+      samples[wd]++;
+    });
+
+    const profile = names.map((name, i) => ({
+      day: name,
+      totalHours: +byWeekday[i].toFixed(1),
+      logCount: samples[i],
+    }));
+
+    const totalLogs = samples.reduce((a, b) => a + b, 0);
+    let suggestion = null;
+    if (totalLogs >= 5) {
+      const min = [...profile].sort((a, b) => a.totalHours - b.totalHours)[0];
+      suggestion = { day: min.day, reason: `lowest recorded usage (${min.totalHours} hrs over the period)` };
+    }
+
+    res.json({ periodDays: days, sampleCount: totalLogs, profile, suggestion,
+      note: totalLogs < 5 ? 'Not enough hours history yet for a reliable suggestion' : undefined });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── LABOR DOWNTIME EXPOSURE ──────────────────────────────────────────────────
+// For each period where a machine was down (unsafe/critical tickets), estimate
+// how much punched labor at that site overlapped the outage
+router.get('/labor-impact', authenticate, readRoles, async (req, res) => {
+  try {
+    const period = parsePeriod(req, 30);
+    const snap = await db.collection('repair_tickets')
+      .where('reportedAt', '>=', `${period.start}T00:00:00.000Z`)
+      .get();
+
+    let tickets = snap.docs.map(d => d.data())
+      .filter(t => (t.priority === 'critical' || t.isSafeToOperate === false) && t.status !== 'rejected');
+    if (req.query.siteId) tickets = tickets.filter(t => t.siteId === req.query.siteId);
+
+    const results = [];
+    for (const t of tickets) {
+      const windowStart = t.reportedAt;
+      const windowEnd = t.completedAt || new Date().toISOString();
+      const downtimeHours = +((new Date(windowEnd) - new Date(windowStart)) / 3600000).toFixed(1);
+
+      const punchSnap = await db.collection('punches')
+        .where('timestamp', '>=', windowStart)
+        .where('timestamp', '<=', windowEnd)
+        .get();
+      const crew = new Set(
+        punchSnap.docs.map(d => d.data()).filter(p => p.siteId === t.siteId).map(p => p.employeeId)
+      );
+
+      results.push({
+        ticketId: t.id,
+        equipmentName: t.equipmentName,
+        siteId: t.siteId,
+        status: t.status,
+        downtimeHours,
+        crewPresent: crew.size,
+        // estimate: crew on site during the outage × outage duration
+        estimatedLaborHoursExposed: +(crew.size * downtimeHours).toFixed(1),
+      });
+    }
+
+    res.json({
+      period,
+      note: 'Exposure = crew punched at the site during the outage × outage hours (upper-bound estimate)',
+      totalEstimatedLaborHoursExposed: +results.reduce((s, r) => s + r.estimatedLaborHoursExposed, 0).toFixed(1),
+      outages: results.sort((a, b) => b.estimatedLaborHoursExposed - a.estimatedLaborHoursExposed),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

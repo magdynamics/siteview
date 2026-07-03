@@ -283,16 +283,31 @@ function NewScheduleModal({ equipment, onClose, onSave }) {
     customDescription: '', intervalDays: '', intervalHours: '',
     nextDueDate: '', nextDueHours: '', reminderDaysBefore: 3, isRecurring: true,
   });
+  const [windowHint, setWindowHint] = useState(null);
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const loadWindowHint = async (equipmentId) => {
+    setWindowHint(null);
+    if (!equipmentId) return;
+    try {
+      const res = await api.get(`/fleet-reports/maintenance-windows/${equipmentId}`);
+      if (res.data.suggestion) setWindowHint(res.data.suggestion);
+    } catch {}
+  };
 
   return (
     <div style={styles.modalOverlay}>
       <div style={styles.modal}>
         <h3 style={{ margin: '0 0 16px', color: '#1a237e' }}>New Maintenance Schedule</h3>
-        <select style={styles.input} value={form.equipmentId} onChange={e => { const eq = equipment.find(x => x.id === e.target.value); update('equipmentId', e.target.value); update('equipmentName', eq?.name || ''); }}>
+        <select style={styles.input} value={form.equipmentId} onChange={e => { const eq = equipment.find(x => x.id === e.target.value); update('equipmentId', e.target.value); update('equipmentName', eq?.name || ''); loadWindowHint(e.target.value); }}>
           <option value="">Select Equipment</option>
           {equipment.map(eq => <option key={eq.id} value={eq.id}>{eq.name} ({eq.typeName})</option>)}
         </select>
+        {windowHint && (
+          <div style={{ background: '#f5f7ff', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#1a237e', marginBottom: 12 }}>
+            💡 Suggested service day: <strong>{windowHint.day}</strong> — {windowHint.reason}
+          </div>
+        )}
         <select style={styles.input} value={form.maintenanceType} onChange={e => update('maintenanceType', e.target.value)}>
           <option value="oil_change">Oil Change</option>
           <option value="filter">Filter Replacement</option>
