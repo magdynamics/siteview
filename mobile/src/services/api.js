@@ -2,7 +2,7 @@ import axios from 'axios';
 import { auth } from './firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://YOUR_SERVER_IP:5000/api'; // Replace with your backend URL
+const API_URL = 'http://192.168.1.3:5000/api'; // Dev backend on the office machine's LAN IP
 
 const api = axios.create({ baseURL: API_URL });
 
