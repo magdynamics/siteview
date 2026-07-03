@@ -15,9 +15,14 @@ const reportRoutes = require('./routes/reports');
 const notificationRoutes = require('./routes/notifications');
 const equipmentRoutes = require('./routes/equipment');
 
+const { UPLOADS_DIR } = require('./services/fileStorage');
+
 const app = express();
 
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
+// Local-driver file serving (trial period; see services/fileStorage.js)
+app.use('/files', express.static(UPLOADS_DIR, { maxAge: '7d' }));
 // FRONTEND_URL supports a comma-separated list of allowed origins
 app.use(cors({
   origin: process.env.FRONTEND_URL

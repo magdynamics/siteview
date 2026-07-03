@@ -11,6 +11,9 @@ web/build/
 mobile/.expo/
 dist/
 
+# Local-driver file storage (trial period)
+backend/uploads/
+
 # Firebase CLI artifacts
 firebase-debug.log
 

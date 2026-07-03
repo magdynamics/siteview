@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { db, storage, messaging } = require('../services/firebase');
+const { db, messaging } = require('../services/firebase');
+const { saveFile } = require('../services/fileStorage');
 const { authenticate, authorize } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
@@ -233,16 +234,7 @@ router.post('/:id/media', authenticate, upload.single('photo'), async (req, res)
 
     const mediaId = uuidv4();
     const fileName = `task-media/${task.siteId}/${task.id}/${phase}_${mediaId}.jpg`;
-    const downloadToken = uuidv4();
-    const bucket = storage.bucket();
-    const file = bucket.file(fileName);
-    await file.save(req.file.buffer, {
-      metadata: {
-        contentType: req.file.mimetype,
-        metadata: { firebaseStorageDownloadTokens: downloadToken },
-      },
-    });
-    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
+    const url = await saveFile(fileName, req.file.buffer, req.file.mimetype);
 
     const media = {
       id: mediaId,
@@ -261,9 +253,7 @@ router.post('/:id/media', authenticate, upload.single('photo'), async (req, res)
     await db.collection('task_media').doc(mediaId).set(media);
     res.status(201).json({ message: 'Media uploaded', media });
   } catch (err) {
-    res.status(500).json({ error: err.message.includes('bucket') || err.message.includes('storage')
-      ? 'Firebase Storage is not provisioned yet — photo uploads are unavailable'
-      : err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { db, storage } = require('../services/firebase');
+const { db } = require('../services/firebase');
+const { saveFile } = require('../services/fileStorage');
 const { takeFromInventory } = require('../services/inventoryStock');
 const { authenticate, authorize } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
@@ -131,17 +132,7 @@ router.post('/:id/photos', authenticate, authorize('supervisor', 'admin'), uploa
     const ext = 'jpg';
     const fileName = `maintenance/${maintenanceId}/${photoType}_${photoId}.${ext}`;
 
-    // Tokenized download URL instead of a world-readable public file
-    const downloadToken = uuidv4();
-    const bucket = storage.bucket();
-    const file = bucket.file(fileName);
-    await file.save(req.file.buffer, {
-      metadata: {
-        contentType: req.file.mimetype,
-        metadata: { firebaseStorageDownloadTokens: downloadToken },
-      },
-    });
-    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
+    const url = await saveFile(fileName, req.file.buffer, req.file.mimetype);
 
     const photo = {
       id: photoId,

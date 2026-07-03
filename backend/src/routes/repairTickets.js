@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { db, storage, messaging } = require('../services/firebase');
+const { db, messaging } = require('../services/firebase');
+const { saveFile } = require('../services/fileStorage');
 const { createMaintenanceRecord } = require('../services/maintenanceRecords');
 const { authenticate, authorize } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
@@ -307,17 +308,7 @@ router.post('/:id/photos', authenticate, upload.single('photo'), async (req, res
     const photoId = uuidv4();
     const fileName = `repair_tickets/${req.params.id}/${photoType}_${photoId}.jpg`;
 
-    // Tokenized download URL instead of a world-readable public file
-    const downloadToken = uuidv4();
-    const bucket = storage.bucket();
-    const file = bucket.file(fileName);
-    await file.save(req.file.buffer, {
-      metadata: {
-        contentType: req.file.mimetype,
-        metadata: { firebaseStorageDownloadTokens: downloadToken },
-      },
-    });
-    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
+    const url = await saveFile(fileName, req.file.buffer, req.file.mimetype);
 
     const photo = { id: photoId, photoType, url, uploadedBy: req.user.uid, uploadedAt: new Date().toISOString() };
     await db.collection('repair_tickets').doc(req.params.id).update({

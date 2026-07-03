@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { db, storage } = require('../services/firebase');
+const { db } = require('../services/firebase');
+const { saveFile } = require('../services/fileStorage');
 const { authenticate } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
@@ -16,19 +17,7 @@ router.post('/', authenticate, upload.single('document'), async (req, res) => {
     const docId = uuidv4();
     const ext = req.file.mimetype.includes('pdf') ? 'pdf' : 'jpg';
     const fileName = `documents/${siteId}/${req.user.uid}/${docId}.${ext}`;
-    const bucket = storage.bucket();
-    const file = bucket.file(fileName);
-
-    // Tokenized download URL instead of a world-readable public file
-    const downloadToken = uuidv4();
-    await file.save(req.file.buffer, {
-      metadata: {
-        contentType: req.file.mimetype,
-        metadata: { firebaseStorageDownloadTokens: downloadToken },
-      },
-    });
-
-    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${downloadToken}`;
+    const publicUrl = await saveFile(fileName, req.file.buffer, req.file.mimetype);
 
     const documentRecord = {
       id: docId,
