@@ -11,6 +11,7 @@ import PlansView from './PlansView';
 import ChangeOrdersView from './ChangeOrdersView';
 import AlertsView from './AlertsView';
 import AskView from './AskView';
+import SafetyView from './SafetyView';
 
 const STATUS_COLOR = { on_site: '#2e7d32', left: '#b71c1c', on_break: '#e65100', absent: '#888' };
 const STATUS_LABEL = { on_site: 'On Site', left: 'Left', on_break: 'On Break', absent: 'Absent' };
@@ -114,6 +115,7 @@ export default function SupervisorDashboard() {
             ['inventory', '📦 Inventory'],
             ['plans', '📐 Plans'],
             ['change-orders', '📝 Change Orders'],
+            ['safety', '🦺 Safety'],
           ].map(([tab, label]) => (
             <div
               key={tab}
@@ -264,6 +266,7 @@ export default function SupervisorDashboard() {
         {activeTab === 'inventory' && <InventoryView siteId={selectedSite} />}
         {activeTab === 'plans' && <PlansView siteId={selectedSite} />}
         {activeTab === 'change-orders' && <ChangeOrdersView siteId={selectedSite} />}
+        {activeTab === 'safety' && <SafetyView siteId={selectedSite} />}
       </div>
     </div>
   );

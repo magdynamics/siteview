@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { auth } from './firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { enqueue, flush } from './offlineQueue';
 
 const API_URL = 'http://192.168.1.3:5000/api'; // Dev backend on the office machine's LAN IP
 
@@ -15,6 +16,37 @@ api.interceptors.request.use(async (config) => {
   }
   return config;
 });
+
+// Offline-first: these mutations queue locally on network failure and
+// replay when connectivity returns (§10.1)
+const QUEUEABLE = [
+  /^\/punches\/(in|out)$/,
+  /^\/machine-hours$/,
+  /^\/tasks\/[^/]+\/(acknowledge|status)$/,
+  /^\/materials\/[^/]+\/tickets$/,
+];
+
+api.interceptors.response.use(
+  (res) => {
+    flush(api).catch(() => {});   // any success means we're online — drain the queue
+    return res;
+  },
+  async (error) => {
+    const cfg = error.config || {};
+    const isNetworkFailure = !error.response;
+    const method = (cfg.method || '').toLowerCase();
+    const path = (cfg.url || '').replace(API_URL, '');
+    if (isNetworkFailure && !cfg.__fromQueue && ['post', 'patch'].includes(method)
+        && QUEUEABLE.some(rx => rx.test(path)) && typeof cfg.data === 'string') {
+      await enqueue({ method, url: path, data: JSON.parse(cfg.data), queuedAt: new Date().toISOString() });
+      return Promise.resolve({ status: 202, data: { queued: true } });
+    }
+    return Promise.reject(error);
+  }
+);
+
+// background retry while the app is open
+setInterval(() => flush(api).catch(() => {}), 30000);
 
 // Punch endpoints
 export const punchIn = (data) => api.post('/punches/in', data);

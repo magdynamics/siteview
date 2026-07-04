@@ -14,6 +14,7 @@ import EquipmentScreen from '../screens/EquipmentScreen';
 import InspectionScreen from '../screens/InspectionScreen';
 import MachineHoursScreen from '../screens/MachineHoursScreen';
 import MyTasksScreen from '../screens/MyTasksScreen';
+import SafetyScreen from '../screens/SafetyScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -62,6 +63,11 @@ function EmployeeTabs() {
         name="Hours"
         component={MachineHoursScreen}
         options={{ tabBarLabel: 'Hours', tabBarIcon: () => <Text>⏱</Text> }}
+      />
+      <Tab.Screen
+        name="Safety"
+        component={SafetyScreen}
+        options={{ tabBarLabel: t('safety'), tabBarIcon: () => <Text>🦺</Text> }}
       />
     </Tab.Navigator>
   );

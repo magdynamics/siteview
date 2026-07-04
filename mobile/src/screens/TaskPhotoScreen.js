@@ -30,7 +30,7 @@ export default function TaskPhotoScreen() {
         {
           text: t('takePhoto'), onPress: async () => {
             const result = await ImagePicker.launchCameraAsync({
-              quality: 0.7, allowsEditing: false,
+              quality: 0.4, allowsEditing: false,
             });
             if (!result.canceled) {
               if (photoType === 'before') setBeforePhoto(result.assets[0]);
@@ -41,7 +41,7 @@ export default function TaskPhotoScreen() {
         {
           text: t('uploadPhoto'), onPress: async () => {
             const result = await ImagePicker.launchImageLibraryAsync({
-              quality: 0.7,
+              quality: 0.4,
             });
             if (!result.canceled) {
               if (photoType === 'before') setBeforePhoto(result.assets[0]);

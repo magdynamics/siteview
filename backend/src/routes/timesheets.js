@@ -50,7 +50,9 @@ router.get('/generate', authenticate, authorize('supervisor', 'accountant', 'man
     if (employeeId) query = query.where('employeeId', '==', employeeId);
 
     const snapshot = await query.orderBy('timestamp', 'asc').get();
-    const punches = snapshot.docs.map(doc => doc.data());
+    // corrected punches are superseded by their correction record — never
+    // counted, but preserved for dispute/audit purposes
+    const punches = snapshot.docs.map(doc => doc.data()).filter(p => !p.supersededBy);
 
     // Group by employee
     const byEmployee = {};

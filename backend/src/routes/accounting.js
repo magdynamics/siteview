@@ -31,6 +31,19 @@ async function generateSnapshot(siteId) {
     if (!obligations[key]) obligations[key] = { vendor: t.supplier || 'Unknown supplier', poReference: t.poReference, amount: 0 };
     obligations[key].amount = +(obligations[key].amount + amount).toFixed(2);
   }
+  // unpaid subcontractor invoices are obligations too
+  const subInvSnap = await db.collection('subcontractor_invoices')
+    .where('siteId', '==', siteId).get();
+  subInvSnap.docs.map(d => d.data())
+    .filter(i => ['pending', 'approved'].includes(i.status))
+    .forEach(i => {
+      obligations[`sub|${i.id}`] = {
+        vendor: i.subcontractorName,
+        poReference: i.invoiceNumber || i.poReference || 'invoice',
+        amount: i.amount,
+      };
+    });
+
   const obligationsDue = Object.values(obligations);
 
   const payrollDueAmount = budget.actualLaborCost;
@@ -94,6 +107,78 @@ router.post('/cash-forecast/generate', authenticate, acctRoles, async (req, res)
     const siteDoc = await db.collection('sites').doc(siteId).get();
     if (!siteDoc.exists) return res.status(400).json({ error: 'siteId does not match an existing site' });
     res.status(201).json({ message: 'Forecast generated', snapshot: await generateSnapshot(siteId) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── EXCEL EXPORT (QuickBooks stopgap) ───────────────────────────────────────
+// Until a QuickBooks account exists, the accountant exports weekly costs and
+// open obligations as .xlsx and imports/keys them into the books manually.
+router.get('/export', authenticate, acctRoles, async (req, res) => {
+  try {
+    const { siteId } = req.query;
+    if (!siteId) return res.status(400).json({ error: 'siteId is required' });
+
+    const bounds = weekBounds();
+    const budget = await getWeeklyBudget(siteId, bounds.weekStartDate);
+
+    // reuse the forecast's obligation gathering by generating a fresh snapshot
+    const snapshot = await generateSnapshot(siteId);
+
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'SiteView — Build Chain';
+    const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A237E' } };
+    const headerFont = { color: { argb: 'FFFFFFFF' }, bold: true };
+
+    // Sheet 1: weekly cost summary
+    const s1 = workbook.addWorksheet('Weekly Costs');
+    s1.mergeCells('A1:C1');
+    s1.getCell('A1').value = `BUILD CHAIN — WEEKLY COSTS (${bounds.weekStartDate})`;
+    s1.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FF1A237E' } };
+    const rows = [
+      ['Category', 'Actual', 'Planned'],
+      ['Labor', budget.actualLaborCost, budget.plannedLaborCost || 0],
+      ['Equipment', budget.actualEquipmentCost, budget.plannedEquipmentCost || 0],
+      ['Materials', budget.actualMaterialCost, budget.plannedMaterialCost || 0],
+      ['Subcontractors', budget.actualSubcontractorCost || 0, budget.plannedSubcontractorCost || 0],
+      ['TOTAL', budget.actualTotal, budget.plannedTotal],
+    ];
+    rows.forEach((r, i) => {
+      const row = s1.getRow(3 + i);
+      r.forEach((v, c) => {
+        const cell = row.getCell(c + 1);
+        cell.value = v;
+        if (i === 0) { cell.fill = headerFill; cell.font = headerFont; }
+        else if (c > 0) cell.numFmt = '$#,##0.00';
+        if (i === rows.length - 1) cell.font = { bold: true };
+      });
+    });
+    s1.columns = [{ width: 20 }, { width: 16 }, { width: 16 }];
+
+    // Sheet 2: obligations due (vendor bills to enter into the books)
+    const s2 = workbook.addWorksheet('Obligations Due');
+    ['Vendor', 'Reference', 'Amount'].forEach((h, i) => {
+      const cell = s2.getRow(1).getCell(i + 1);
+      cell.value = h; cell.fill = headerFill; cell.font = headerFont;
+    });
+    snapshot.obligationsDue.forEach((o, i) => {
+      const row = s2.getRow(2 + i);
+      row.getCell(1).value = o.vendor;
+      row.getCell(2).value = o.poReference;
+      row.getCell(3).value = o.amount;
+      row.getCell(3).numFmt = '$#,##0.00';
+    });
+    const totRow = s2.getRow(2 + snapshot.obligationsDue.length);
+    totRow.getCell(1).value = 'TOTAL';
+    totRow.getCell(3).value = snapshot.obligationsTotal;
+    totRow.getCell(3).numFmt = '$#,##0.00';
+    totRow.font = { bold: true };
+    s2.columns = [{ width: 28 }, { width: 22 }, { width: 16 }];
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=weekly-costs-${siteId}-${bounds.weekStartDate}.xlsx`);
+    res.send(Buffer.from(buffer));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

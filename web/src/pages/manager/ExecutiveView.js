@@ -7,6 +7,7 @@ export default function ExecutiveView() {
   const [sites, setSites] = useState([]);
   const [siteId, setSiteId] = useState('');
   const [data, setData] = useState(null);
+  const [weather, setWeather] = useState([]);
 
   useEffect(() => {
     api.get('/sites').then(r => { setSites(r.data); if (r.data[0]) setSiteId(r.data[0].id); }).catch(() => {});
@@ -18,6 +19,10 @@ export default function ExecutiveView() {
       const res = await api.get(`/dashboard/executive?siteId=${siteId}`);
       setData(res.data);
     } catch (err) { alert(err.response?.data?.error || 'Failed to load'); }
+    try {
+      const w = await api.get(`/weather?siteId=${siteId}&days=7`);
+      setWeather(w.data);
+    } catch (err) { console.error('Weather load failed:', err.response?.data?.error || err.message); }
   }, [siteId]);
 
   useEffect(() => { load(); }, [load]);
@@ -55,6 +60,27 @@ export default function ExecutiveView() {
           sub={`${risk.criticalTickets} critical tickets · ${risk.equipmentDown} machines down`} />
       </div>
 
+      {/* Weather log — schedule variance documentation (guideline §10.4) */}
+      {weather.length > 0 && (
+        <div style={styles.weatherCard}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#333', marginBottom: 10 }}>🌤 Site Weather (last 7 days)</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {weather.map(w => (
+              <div key={w.id} style={styles.weatherDay}>
+                <div style={{ fontSize: 11, color: '#888' }}>{w.date.slice(5)}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>{w.conditions}</div>
+                <div style={{ fontSize: 12, color: '#555' }}>
+                  {Math.round(w.tempMaxF)}° / {Math.round(w.tempMinF)}°
+                </div>
+                <div style={{ fontSize: 11, color: (w.precipitationIn > 0.1 || w.windMaxMph > 25) ? '#b71c1c' : '#999' }}>
+                  💧{w.precipitationIn}" · 💨{Math.round(w.windMaxMph)}mph
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <AlertsView siteId={siteId} />
     </div>
   );
@@ -73,4 +99,6 @@ const styles = {
   select: { padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', fontSize: 14, background: '#fff' },
   statsRow: { display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' },
   dim: { color: '#888', fontSize: 12 },
+  weatherCard: { background: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' },
+  weatherDay: { minWidth: 105, background: '#f8f9ff', borderRadius: 10, padding: 10, textAlign: 'center' },
 };

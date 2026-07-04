@@ -32,12 +32,13 @@ async function computeActuals(siteId, weekStartDate, weekEndDate) {
   const startIso = `${weekStartDate}T00:00:00.000Z`;
   const endIso = `${weekEndDate}T23:59:59.999Z`;
 
-  const [punchSnap, maintSnap, hoursSnap, matTicketSnap, invTxSnap] = await Promise.all([
+  const [punchSnap, maintSnap, hoursSnap, matTicketSnap, invTxSnap, subInvSnap] = await Promise.all([
     db.collection('punches').where('timestamp', '>=', startIso).where('timestamp', '<=', endIso).get(),
     db.collection('maintenance_records').where('maintenanceDate', '>=', weekStartDate).where('maintenanceDate', '<=', weekEndDate).get(),
     db.collection('machine_hours_log').where('date', '>=', weekStartDate).where('date', '<=', weekEndDate).get(),
     db.collection('material_tickets').where('loggedAt', '>=', startIso).where('loggedAt', '<=', endIso).get(),
     db.collection('inventory_transactions').where('timestamp', '>=', startIso).where('timestamp', '<=', endIso).get(),
+    db.collection('subcontractor_invoices').where('periodEnd', '>=', weekStartDate).where('periodEnd', '<=', weekEndDate).get(),
   ]);
 
   let labor = 0, laborHours = 0;
@@ -75,12 +76,19 @@ async function computeActuals(siteId, weekStartDate, weekEndDate) {
     if (tx.siteId === siteId && tx.transactionType === 'take') materials += tx.totalCost || 0;
   });
 
+  let subcontractors = 0;
+  subInvSnap.docs.forEach(d => {
+    const inv = d.data();
+    if (inv.siteId === siteId && ['approved', 'paid'].includes(inv.status)) subcontractors += inv.amount || 0;
+  });
+
   return {
     actualLaborCost: +labor.toFixed(2),
     actualLaborHours: +laborHours.toFixed(2),
     actualEquipmentCost: +equipment.toFixed(2),
     actualMaterialCost: +materials.toFixed(2),
-    actualTotal: +(labor + equipment + materials).toFixed(2),
+    actualSubcontractorCost: +subcontractors.toFixed(2),
+    actualTotal: +(labor + equipment + materials + subcontractors).toFixed(2),
     computedAt: new Date().toISOString(),
   };
 }

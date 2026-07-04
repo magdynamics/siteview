@@ -91,7 +91,7 @@ router.post('/out', authenticate, async (req, res) => {
         .where('timestamp', '>=', `${todayStr}T00:00:00.000Z`)
         .get();
       const todayPunches = todaySnap.docs.map(d => d.data())
-        .filter(p => ['in', 'out'].includes(p.type))
+        .filter(p => ['in', 'out'].includes(p.type) && !p.supersededBy)
         .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
       const last = todayPunches[todayPunches.length - 1];
       if (!last || last.type !== 'in') {
@@ -155,6 +155,55 @@ router.post('/out', authenticate, async (req, res) => {
   }
 });
 
+// Correct a punch (technical guideline §10.3 — immutable audit trail):
+// the original is never edited; a new punch supersedes it with a reason code
+router.post('/:id/correct', authenticate, authorize('supervisor', 'admin'), async (req, res) => {
+  try {
+    const { timestamp, note, reason } = req.body;
+    if (!reason) return res.status(400).json({ error: 'reason is required for a correction' });
+
+    const doc = await db.collection('punches').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Punch not found' });
+    const original = doc.data();
+    if (original.supersededBy) return res.status(400).json({ error: 'This punch was already corrected — correct the latest record instead' });
+    if (timestamp && isNaN(new Date(timestamp).getTime())) {
+      return res.status(400).json({ error: 'timestamp must be a valid ISO date' });
+    }
+
+    const correctionId = uuidv4();
+    const correction = {
+      ...original,
+      id: correctionId,
+      timestamp: timestamp || original.timestamp,
+      note: note !== undefined ? note : original.note,
+      isManual: true,
+      performedBy: req.user.uid,
+      correctionOf: original.id,
+      correctionReason: reason,
+      correctedAt: new Date().toISOString(),
+    };
+    delete correction.supersededBy;
+
+    await db.collection('punches').doc(correctionId).set(correction);
+    await db.collection('punches').doc(original.id).update({ supersededBy: correctionId });
+
+    await logAudit({
+      action: 'PUNCH_CORRECTED',
+      punchId: original.id,
+      correctionId,
+      employeeId: original.employeeId,
+      reason,
+      performedBy: req.user.uid,
+      siteId: original.siteId,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(201).json({ message: 'Correction recorded — original preserved', correction });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get today's punches for an employee
 router.get('/today/:employeeId', authenticate, async (req, res) => {
   try {
@@ -183,7 +232,7 @@ router.get('/site/:siteId/live', authenticate, authorize('supervisor', 'manager'
       .orderBy('timestamp', 'asc')
       .get();
 
-    const punches = snapshot.docs.map(doc => doc.data());
+    const punches = snapshot.docs.map(doc => doc.data()).filter(p => !p.supersededBy);
 
     // Calculate who is currently on site
     const employeeStatus = {};

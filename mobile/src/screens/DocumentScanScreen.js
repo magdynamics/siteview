@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, Alert, ScrollView, ActivityIndicator, Image,
@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { uploadDocument } from '../services/api';
+import api, { uploadDocument } from '../services/api';
 
 const DOC_TYPES = ['receipt', 'vendor_invoice', 'delivery_note', 'other'];
 
@@ -16,10 +16,22 @@ export default function DocumentScanScreen() {
   const { profile } = useAuth();
   const [docType, setDocType] = useState('receipt');
   const [vendorName, setVendorName] = useState('');
+  const [vendors, setVendors] = useState([]);
+  const [vendorId, setVendorId] = useState(null);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // registered vendors — picking one links the scan to the vendor record
+  useEffect(() => {
+    api.get('/vendors').then(r => setVendors(r.data)).catch(() => {});
+  }, []);
+
+  const pickVendor = (v) => {
+    if (vendorId === v.id) { setVendorId(null); setVendorName(''); }
+    else { setVendorId(v.id); setVendorName(v.name); }
+  };
 
   const scanDocument = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -27,12 +39,12 @@ export default function DocumentScanScreen() {
       Alert.alert('Error', t('cameraPermission'));
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.4 });
     if (!result.canceled) setFile({ uri: result.assets[0].uri, type: 'image/jpeg', name: `scan_${Date.now()}.jpg` });
   };
 
   const uploadFromGallery = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8 });
+    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.4 });
     if (!result.canceled) setFile({ uri: result.assets[0].uri, type: 'image/jpeg', name: `doc_${Date.now()}.jpg` });
   };
 
@@ -48,11 +60,16 @@ export default function DocumentScanScreen() {
       formData.append('vendorName', vendorName);
       formData.append('amount', amount);
       formData.append('description', description);
+      if (vendorId) {
+        formData.append('relatedType', 'vendor');
+        formData.append('relatedId', vendorId);
+      }
 
       await uploadDocument(formData);
       Alert.alert('', 'Document uploaded successfully');
       setFile(null);
       setVendorName('');
+      setVendorId(null);
       setAmount('');
       setDescription('');
     } catch {
@@ -102,12 +119,29 @@ export default function DocumentScanScreen() {
           </View>
         )}
 
+        {/* Registered vendors — tap to link the scan to the vendor record */}
+        {vendors.length > 0 && (
+          <View style={styles.typeRow}>
+            {vendors.map(v => (
+              <TouchableOpacity
+                key={v.id}
+                style={[styles.typeBtn, vendorId === v.id && styles.typeBtnActive]}
+                onPress={() => pickVendor(v)}
+              >
+                <Text style={[styles.typeBtnText, vendorId === v.id && styles.typeBtnTextActive]}>
+                  🏷 {v.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         {/* Fields */}
         <TextInput
           style={styles.input}
           placeholder={t('vendorName')}
           value={vendorName}
-          onChangeText={setVendorName}
+          onChangeText={text => { setVendorName(text); setVendorId(null); }}
         />
         <TextInput
           style={styles.input}

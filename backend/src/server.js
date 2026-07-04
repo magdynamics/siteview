@@ -62,6 +62,11 @@ app.use('/api/accounting', require('./routes/accounting'));
 app.use('/api/dashboard', require('./routes/dashboards'));
 app.use('/api/alerts', require('./routes/alerts'));
 app.use('/api/voice', require('./routes/voice'));
+app.use('/api/safety', require('./routes/safety'));
+app.use('/api/weather', require('./routes/weather').router);
+app.use('/api/subcontractors', require('./routes/subcontractors'));
+app.use('/api/vendors', require('./routes/vendors'));
+app.use('/api/payments', require('./routes/payments'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', app: 'SiteView by Build Chain' });

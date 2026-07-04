@@ -349,6 +349,9 @@ cron.schedule('0 7 * * *', async () => {
     console.log('[Maintenance Reminders] Check complete');
 
     await sendDailySiteDigests();
+
+    // daily weather snapshot per site (schedule-variance documentation)
+    try { await require('./weather').captureAllSites(); } catch (e) { console.error('[Weather]', e.message); }
   } catch (err) {
     console.error('[Maintenance Reminders] Error:', err.message);
   }

@@ -75,15 +75,14 @@ export default function DashboardScreen() {
         return;
       }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-
-      await punchIn({
+      const res = await punchIn({
         siteId: profile.assignedSiteId,
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
       });
 
       await loadTodayPunches();
-      Alert.alert('', t('punchedInAt') + ' ' + new Date().toLocaleTimeString());
+      Alert.alert('', res.data?.queued ? t('savedOffline') : t('punchedInAt') + ' ' + new Date().toLocaleTimeString());
     } catch (err) {
       Alert.alert('Error', err.response?.data?.error || t('networkError'));
     } finally {
@@ -105,6 +104,7 @@ export default function DashboardScreen() {
               longitude: loc.coords.longitude,
             });
             await loadTodayPunches();
+            if (res.data?.queued) Alert.alert('', t('savedOffline'));
             const needed = res.data?.hoursLogNeeded;
             if (needed?.length) {
               Alert.alert(

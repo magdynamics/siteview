@@ -64,7 +64,7 @@ export default function MyTasksScreen() {
   const capturePhoto = async (task, phase) => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') { Alert.alert('Error', t('cameraRequired')); return; }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.5 });
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.4 });
     if (result.canceled || !result.assets?.[0]) return;
 
     setUploading(task.id + phase);
@@ -148,8 +148,8 @@ export default function MyTasksScreen() {
               )}
             </View>
 
-            {/* Photo evidence: before/during/after */}
-            {['acknowledged', 'in_progress'].includes(task.status) && (() => {
+            {/* Photo evidence: before/during/after — visible on every open task */}
+            {task.status !== 'complete' && (() => {
               const m = mediaByTask[task.id] || { before: 0, during: 0, after: 0 };
               return (
                 <View style={styles.photoRow}>

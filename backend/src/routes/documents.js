@@ -11,8 +11,10 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 // Upload scanned document (receipt, vendor invoice, etc.)
 router.post('/', authenticate, upload.single('document'), async (req, res) => {
   try {
-    const { documentType, description, siteId, vendorName, amount } = req.body;
+    const { documentType, description, siteId, vendorName, amount, relatedType, relatedId } = req.body;
     // documentType: 'receipt', 'vendor_invoice', 'delivery_note', 'other'
+    // relatedType/relatedId (optional): link the scan to a record —
+    // 'vendor' | 'subcontractor' | 'subcontractor_invoice' | 'payment' | 'equipment' | 'task'
 
     const docId = uuidv4();
     const ext = req.file.mimetype.includes('pdf') ? 'pdf' : 'jpg';
@@ -27,6 +29,8 @@ router.post('/', authenticate, upload.single('document'), async (req, res) => {
       description: description || '',
       vendorName: vendorName || '',
       amount: amount ? parseFloat(amount) : null,
+      relatedType: relatedType || null,
+      relatedId: relatedId || null,
       url: publicUrl,
       fileName: req.file.originalname,
       timestamp: new Date().toISOString(),
@@ -42,11 +46,13 @@ router.post('/', authenticate, upload.single('document'), async (req, res) => {
 // Get documents with filters
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { siteId, documentType, startDate, endDate } = req.query;
+    const { siteId, documentType, startDate, endDate, relatedType, relatedId } = req.query;
     let query = db.collection('documents');
 
     if (siteId) query = query.where('siteId', '==', siteId);
     if (documentType) query = query.where('documentType', '==', documentType);
+    if (relatedType) query = query.where('relatedType', '==', relatedType);
+    if (relatedId) query = query.where('relatedId', '==', relatedId);
     if (startDate) query = query.where('timestamp', '>=', `${startDate}T00:00:00.000Z`);
     if (endDate) query = query.where('timestamp', '<=', `${endDate}T23:59:59.999Z`);
 

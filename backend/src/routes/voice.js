@@ -4,12 +4,14 @@ const { db, messaging } = require('../services/firebase');
 const { authenticate, authorize } = require('../middleware/auth');
 const { getWeeklyBudget } = require('./budget');
 const { v4: uuidv4 } = require('uuid');
+const nlp = require('../services/nlp');
 
 // Voice/text dispatch and query (technical guideline §6.3/§6.4/§18).
 // Input arrives as text (typed, or transcribed client-side by the browser's
-// Web Speech API). Parsing is rule-based behind parseDispatch()/classifyIntent()
-// seams so an LLM can replace them later without touching the endpoints.
-// Every input is logged with its parsed result for accuracy review.
+// Web Speech API). When ANTHROPIC_API_KEY is set, parsing goes through Claude
+// (services/nlp.js); otherwise — or if the API call fails — the rule-based
+// parsers below handle it. Every input is logged with its parsed result and
+// which parser produced it, for accuracy review.
 
 async function logVoice(entry) {
   const id = uuidv4();
@@ -66,7 +68,13 @@ router.post('/dispatch', authenticate, authorize('supervisor', 'manager', 'admin
     const employees = empSnap.docs.map(d => d.data()).filter(u => ['employee', 'supervisor'].includes(u.role));
     const zoneTags = [...new Set(planSnap.docs.flatMap(d => d.data().zoneTags || []))];
 
-    const { drafts, unmatched } = parseDispatch(text, employees, zoneTags);
+    let parsed, parsedBy = 'rules';
+    if (nlp.isEnabled()) {
+      try { parsed = await nlp.parseDispatch(text, employees, zoneTags); parsedBy = 'claude'; }
+      catch (e) { console.error('nlp.parseDispatch failed, falling back to rules:', e.message); }
+    }
+    if (!parsed) parsed = parseDispatch(text, employees, zoneTags);
+    const { drafts, unmatched } = parsed;
 
     const saved = [];
     for (const d of drafts) {
@@ -82,7 +90,7 @@ router.post('/dispatch', authenticate, authorize('supervisor', 'manager', 'admin
       saved.push(draft);
     }
 
-    await logVoice({ kind: 'dispatch', input: text, siteId, userId: req.user.uid,
+    await logVoice({ kind: 'dispatch', input: text, siteId, userId: req.user.uid, parsedBy,
       parsed: saved.map(d => ({ assignedToName: d.assignedToName, title: d.title, planReference: d.planReference })),
       unmatchedCount: unmatched.length });
 
@@ -155,7 +163,12 @@ router.post('/query', authenticate, async (req, res) => {
   try {
     const { text, siteId } = req.body;
     if (!text) return res.status(400).json({ error: 'text is required' });
-    const intent = classifyIntent(text);
+    let intent, intentBy = 'rules';
+    if (nlp.isEnabled()) {
+      try { intent = await nlp.classifyIntent(text); intentBy = 'claude'; }
+      catch (e) { console.error('nlp.classifyIntent failed, falling back to rules:', e.message); }
+    }
+    if (!intent) intent = classifyIntent(text);
     let answer = null, source = null, data = null;
 
     if (intent === 'material_location') {
@@ -218,7 +231,7 @@ router.post('/query', authenticate, async (req, res) => {
       answer = 'I can answer: where a material is, budget status this week, your tasks, or equipment status. Try rephrasing.';
     }
 
-    await logVoice({ kind: 'query', input: text, siteId: siteId || null, userId: req.user.uid, intent, answer });
+    await logVoice({ kind: 'query', input: text, siteId: siteId || null, userId: req.user.uid, intent, intentBy, answer });
     res.json({ intent, answer, source, data });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
