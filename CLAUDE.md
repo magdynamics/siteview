@@ -62,15 +62,15 @@ The web app mirrors this: `web/src/pages/` is organized into `admin/`, `manager/
 
 ### Backend
 
-`backend/src/routes/` has one module per domain, all registered in `src/server.js`. Domains: time tracking (`punches`, `timesheets`), workforce (`auth`, `employees`, `sites`), equipment management (`equipment`, `machineHours`, `maintenance`, `maintenanceSchedule`, `repairTickets`, `technicians`, `inspections`, `healthDashboard`, `fleetReports` — utilization/downtime/compliance/idle-assets/cost-per-hour under `/api/fleet-reports`), plus `inventory`, `documents`, `photos`, `notifications`, `reports`.
+`backend/src/routes/` has one module per domain, all registered in `src/server.js`. Domains: time tracking (`punches` — includes immutable corrections via `POST /:id/correct` + `supersededBy` chain, `timesheets`), workforce (`auth`, `employees`, `sites`), equipment management (`equipment`, `machineHours`, `maintenance`, `maintenanceSchedule`, `repairTickets`, `technicians`, `inspections`, `healthDashboard`, `fleetReports` — utilization/downtime/compliance/idle-assets/cost-per-hour under `/api/fleet-reports`), money (`budget`, `accounting` — cash forecast + `GET /export` weekly xlsx, `subcontractors` + invoices, `vendors`, `payments` — ledger with proof uploads; linking an invoice auto-marks it paid), field ops (`tasks`, `materials`, `plans`, `changeOrders`, `safety` — incident report/close, `weather` — daily Open-Meteo capture per site, `voice` — dispatch/query), plus `inventory`, `documents` (supports `relatedType`/`relatedId` linking), `photos`, `notifications`, `reports`, `dashboards`, `alerts`.
 
-`backend/src/services/`: `firebase.js` (Admin SDK — Firestore + Storage), `pdf.js` (pdfkit) and `excel.js` (exceljs) for invoice/timesheet exports, `maintenanceRecords.js` (shared maintenance-record writer used by manual creation, schedule completion, and ticket completion), `inventoryStock.js` (stock decrement + transaction log shared by inventory and maintenance-supplies endpoints).
+`backend/src/services/`: `firebase.js` (Admin SDK — Firestore + Storage), `pdf.js` (pdfkit) and `excel.js` (exceljs) for invoice/timesheet exports, `maintenanceRecords.js` (shared maintenance-record writer used by manual creation, schedule completion, and ticket completion), `inventoryStock.js` (stock decrement + transaction log shared by inventory and maintenance-supplies endpoints), `nlp.js` (Claude-powered voice parsing via `@anthropic-ai/sdk`, active only when `ANTHROPIC_API_KEY` is set — voice.js falls back to its rule-based parsers otherwise), `fileStorage.js` (local/firebase upload driver).
 
 Note: `/api/health` is registered twice in `server.js` — the healthDashboard router and a plain status endpoint; the router wins for matching paths.
 
 ### Mobile
 
-Employee-only app: punch in/out (GPS via expo-location), task photos, equipment/machine hours, inspections, document scanning. i18n via i18next with English and Spanish in `mobile/src/i18n/` — user-facing strings belong in both `en.js` and `es.js`, not inline.
+Employee-only app: punch in/out (GPS via expo-location), my-tasks with before/during/after photo evidence, safety incident reporting, equipment/machine hours, inspections, document scanning (with vendor linking). i18n via i18next with English and Spanish in `mobile/src/i18n/` — user-facing strings belong in both `en.js` and `es.js`, not inline. Offline-first: `services/offlineQueue.js` queues punches/machine-hours/task-status mutations in AsyncStorage on network failure and replays them (interceptors in `services/api.js`); queued responses resolve `{status: 202, data: {queued: true}}`.
 
 ### Domain rules
 
