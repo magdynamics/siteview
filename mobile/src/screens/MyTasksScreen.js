@@ -61,16 +61,31 @@ export default function MyTasksScreen() {
   const complete = (task) => act(() => api.patch(`/tasks/${task.id}/status`, { status: 'complete' }), t('taskCompleted'));
   const resume = (task) => act(() => api.patch(`/tasks/${task.id}/status`, { status: 'in_progress' }));
 
-  const capturePhoto = async (task, phase) => {
+  // tap → choose photo or short video clip as evidence
+  const captureEvidence = (task, phase) => {
+    Alert.alert(t('addEvidence'), '', [
+      { text: `📷 ${t('takePhoto')}`, onPress: () => capture(task, phase, false) },
+      { text: `🎥 ${t('recordVideo')}`, onPress: () => capture(task, phase, true) },
+      { text: t('cancel'), style: 'cancel' },
+    ]);
+  };
+
+  const capture = async (task, phase, video) => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') { Alert.alert('Error', t('cameraRequired')); return; }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.4 });
+    const result = await ImagePicker.launchCameraAsync(video
+      ? { mediaTypes: ImagePicker.MediaTypeOptions.Videos, videoMaxDuration: 20 }
+      : { quality: 0.4 });
     if (result.canceled || !result.assets?.[0]) return;
 
     setUploading(task.id + phase);
     try {
       const formData = new FormData();
-      formData.append('photo', { uri: result.assets[0].uri, name: `${phase}.jpg`, type: 'image/jpeg' });
+      formData.append('photo', {
+        uri: result.assets[0].uri,
+        name: video ? `${phase}.mp4` : `${phase}.jpg`,
+        type: video ? 'video/mp4' : 'image/jpeg',
+      });
       formData.append('phase', phase);
       await api.post(`/tasks/${task.id}/media`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       await load();
@@ -158,7 +173,7 @@ export default function MyTasksScreen() {
                       key={phase}
                       style={[styles.photoBtn, m[phase] > 0 && styles.photoBtnDone]}
                       disabled={uploading === task.id + phase}
-                      onPress={() => capturePhoto(task, phase)}>
+                      onPress={() => captureEvidence(task, phase)}>
                       <Text style={[styles.photoBtnText, m[phase] > 0 && { color: '#2e7d32' }]}>
                         {uploading === task.id + phase ? '…' : `📷 ${label}${m[phase] > 0 ? ` ✓${m[phase]}` : ''}`}
                       </Text>

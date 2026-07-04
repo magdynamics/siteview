@@ -120,7 +120,9 @@ export default function TasksView({ siteId }) {
                 <div key={phase} style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{phase}</div>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    {shots.map(m => (
+                    {shots.map(m => m.mediaType === 'video' ? (
+                      <video key={m.id} src={m.url} controls style={{ width: 200, height: 130, borderRadius: 10, border: '1px solid #eee', background: '#000' }} />
+                    ) : (
                       <a key={m.id} href={m.url} target="_blank" rel="noreferrer" title={`${m.uploadedByName || ''} · ${new Date(m.uploadedAt).toLocaleString()}`}>
                         <img src={m.url} alt={phase} style={{ width: 130, height: 130, objectFit: 'cover', borderRadius: 10, border: '1px solid #eee' }} />
                       </a>

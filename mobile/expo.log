@@ -1,0 +1,9 @@
+Starting project at C:\Users\moabughoush\siteview\mobile
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Some dependencies are incompatible with the installed expo version:
+  react-native@0.72.6 - expected version: 0.72.10
+Your project may not work correctly until you install the correct versions of the packages.
+Fix with: npx expo install --fix
+Waiting on http://localhost:8081
+Logs for your project will appear below.

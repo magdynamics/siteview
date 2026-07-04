@@ -6,7 +6,8 @@ const { saveFile } = require('../services/fileStorage');
 const { authenticate, authorize } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+// 60MB ceiling: task evidence can be a short video clip, not just a photo
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 60 * 1024 * 1024 } });
 
 // Task dispatch & acknowledgment (technical guideline §4.5).
 // Photo enforcement on completion is gated by REQUIRE_TASK_PHOTOS until
@@ -235,14 +236,16 @@ router.post('/:id/media', authenticate, upload.single('photo'), async (req, res)
     const task = taskDoc.data();
 
     const mediaId = uuidv4();
-    const fileName = `task-media/${task.siteId}/${task.id}/${phase}_${mediaId}.jpg`;
+    const isVideo = (req.file.mimetype || '').startsWith('video/');
+    const ext = isVideo ? 'mp4' : 'jpg';
+    const fileName = `task-media/${task.siteId}/${task.id}/${phase}_${mediaId}.${ext}`;
     const url = await saveFile(fileName, req.file.buffer, req.file.mimetype);
 
     const media = {
       id: mediaId,
       taskId: task.id,
       siteId: task.siteId,
-      mediaType: 'photo',
+      mediaType: isVideo ? 'video' : 'photo',
       phase,
       caption: caption || '',
       latitude: latitude || null,

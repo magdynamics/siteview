@@ -49,6 +49,8 @@ export default {
     photosRequired: 'A before and an after photo are required to complete this task',
     cameraRequired: 'Camera permission is required',
     savedOffline: 'No signal — saved on your phone and will sync automatically',
+    addEvidence: 'Photo or video?',
+    recordVideo: 'Record video (20 sec)',
     status_assigned: 'NEW',
     status_acknowledged: 'ACKNOWLEDGED',
     status_in_progress: 'IN PROGRESS',

@@ -49,6 +49,8 @@ export default {
     photosRequired: 'Se requiere una foto de antes y una de después para completar esta tarea',
     cameraRequired: 'Se requiere permiso de cámara',
     savedOffline: 'Sin señal — guardado en tu teléfono y se sincronizará automáticamente',
+    addEvidence: '¿Foto o video?',
+    recordVideo: 'Grabar video (20 seg)',
     status_assigned: 'NUEVA',
     status_acknowledged: 'CONFIRMADA',
     status_in_progress: 'EN CURSO',
