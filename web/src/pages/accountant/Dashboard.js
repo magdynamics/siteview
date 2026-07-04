@@ -67,8 +67,11 @@ export default function AccountantDashboard() {
           ))}
         </nav>
         <div style={styles.sidebarBottom}>
+          {profile?.role === 'admin' && (
+            <a href="/admin" style={{ display: 'block', color: '#aab2e8', fontSize: 13, textDecoration: 'none', marginBottom: 10 }}>⚙ Admin Panel</a>
+          )}
           <div style={styles.userName}>{profile?.name}</div>
-          <div style={styles.userRole}>Accountant</div>
+          <div style={styles.userRole}>{profile?.role === 'admin' ? 'Admin' : 'Accountant'}</div>
           <button style={styles.logoutBtn} onClick={logout}>Logout</button>
         </div>
       </div>

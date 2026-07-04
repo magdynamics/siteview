@@ -138,6 +138,19 @@ export default function AdminDashboard() {
               {tab === 'employees' ? '👷 Employees' : tab === 'sites' ? '🏗 Sites' : tab === 'equipment' ? '🔧 Equipment' : tab === 'equip-types' ? '📋 Equip Types' : '🚜 Fleet Reports'}
             </div>
           ))}
+
+          {/* Admin can open every role's workspace */}
+          <div style={{ padding: '14px 20px 6px', fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 2 }}>WORKSPACES</div>
+          {[
+            ['/supervisor', '🛠 Site Operations'],
+            ['/manager', '📊 Manager Dashboards'],
+            ['/accountant', '💰 Budget & Finance'],
+            ['/compliance', '🏛 Compliance View'],
+          ].map(([path, label]) => (
+            <a key={path} href={path} style={{ ...styles.navItem, display: 'block', textDecoration: 'none', color: '#aab2e8' }}>
+              {label}
+            </a>
+          ))}
         </nav>
         <div style={styles.sidebarBottom}>
           <div style={styles.userName}>{profile?.name}</div>
