@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, Alert, RefreshControl,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 
@@ -15,13 +16,29 @@ export default function MyTasksScreen() {
   const { t } = useTranslation();
   const [tasks, setTasks] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [mediaByTask, setMediaByTask] = useState({});
+  const [uploading, setUploading] = useState(null);
 
   const load = useCallback(async () => {
     try {
       const res = await api.get('/tasks', { params: { assignedTo: 'me' } });
       const today = new Date().toISOString().split('T')[0];
       // open tasks plus anything completed today
-      setTasks(res.data.filter(x => x.status !== 'complete' || x.scheduledDate === today));
+      const visible = res.data.filter(x => x.status !== 'complete' || x.scheduledDate === today);
+      setTasks(visible);
+      // photo counts per task (before/after gate)
+      const counts = {};
+      for (const task of visible) {
+        try {
+          const m = await api.get(`/tasks/${task.id}/media`);
+          counts[task.id] = {
+            before: m.data.filter(x => x.phase === 'before').length,
+            during: m.data.filter(x => x.phase === 'during').length,
+            after: m.data.filter(x => x.phase === 'after').length,
+          };
+        } catch { counts[task.id] = { before: 0, during: 0, after: 0 }; }
+      }
+      setMediaByTask(counts);
     } catch {}
   }, []);
 
@@ -43,6 +60,25 @@ export default function MyTasksScreen() {
   const start = (task) => act(() => api.patch(`/tasks/${task.id}/status`, { status: 'in_progress' }));
   const complete = (task) => act(() => api.patch(`/tasks/${task.id}/status`, { status: 'complete' }), t('taskCompleted'));
   const resume = (task) => act(() => api.patch(`/tasks/${task.id}/status`, { status: 'in_progress' }));
+
+  const capturePhoto = async (task, phase) => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Error', t('cameraRequired')); return; }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.5 });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    setUploading(task.id + phase);
+    try {
+      const formData = new FormData();
+      formData.append('photo', { uri: result.assets[0].uri, name: `${phase}.jpg`, type: 'image/jpeg' });
+      formData.append('phase', phase);
+      await api.post(`/tasks/${task.id}/media`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      await load();
+      Alert.alert('', t('photoUploaded'));
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.error || t('networkError'));
+    } finally { setUploading(null); }
+  };
 
   const block = (task) => {
     Alert.alert(t('blockTask'), t('blockReasonTitle'), [
@@ -89,22 +125,48 @@ export default function MyTasksScreen() {
                   <Text style={styles.actionText}>{t('startTask')}</Text>
                 </TouchableOpacity>
               )}
-              {task.status === 'in_progress' && (
-                <>
-                  <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#2e7d32' }]} onPress={() => complete(task)}>
-                    <Text style={styles.actionText}>{t('completeTask')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#b71c1c' }]} onPress={() => block(task)}>
-                    <Text style={styles.actionText}>{t('blockTask')}</Text>
-                  </TouchableOpacity>
-                </>
-              )}
+              {task.status === 'in_progress' && (() => {
+                const m = mediaByTask[task.id] || { before: 0, during: 0, after: 0 };
+                const canComplete = m.before > 0 && m.after > 0;
+                return (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: canComplete ? '#2e7d32' : '#9e9e9e' }]}
+                      onPress={() => canComplete ? complete(task) : Alert.alert('', t('photosRequired'))}>
+                      <Text style={styles.actionText}>{t('completeTask')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#b71c1c' }]} onPress={() => block(task)}>
+                      <Text style={styles.actionText}>{t('blockTask')}</Text>
+                    </TouchableOpacity>
+                  </>
+                );
+              })()}
               {task.status === 'blocked' && (
                 <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#1565c0' }]} onPress={() => resume(task)}>
                   <Text style={styles.actionText}>{t('resumeTask')}</Text>
                 </TouchableOpacity>
               )}
             </View>
+
+            {/* Photo evidence: before/during/after */}
+            {['acknowledged', 'in_progress'].includes(task.status) && (() => {
+              const m = mediaByTask[task.id] || { before: 0, during: 0, after: 0 };
+              return (
+                <View style={styles.photoRow}>
+                  {[['before', t('beforePhoto')], ['during', t('duringPhoto')], ['after', t('afterPhoto')]].map(([phase, label]) => (
+                    <TouchableOpacity
+                      key={phase}
+                      style={[styles.photoBtn, m[phase] > 0 && styles.photoBtnDone]}
+                      disabled={uploading === task.id + phase}
+                      onPress={() => capturePhoto(task, phase)}>
+                      <Text style={[styles.photoBtnText, m[phase] > 0 && { color: '#2e7d32' }]}>
+                        {uploading === task.id + phase ? '…' : `📷 ${label}${m[phase] > 0 ? ` ✓${m[phase]}` : ''}`}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              );
+            })()}
           </View>
         ))}
         <View style={{ height: 40 }} />
@@ -131,4 +193,8 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
   actionBtn: { flex: 1, borderRadius: 8, padding: 12, alignItems: 'center' },
   actionText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+  photoRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  photoBtn: { flex: 1, borderRadius: 8, borderWidth: 1, borderColor: '#c5cae9', padding: 9, alignItems: 'center', backgroundColor: '#f8f9ff' },
+  photoBtnDone: { borderColor: '#2e7d32', backgroundColor: '#e8f5e9' },
+  photoBtnText: { fontSize: 12, color: '#1a237e', fontWeight: '600' },
 });
