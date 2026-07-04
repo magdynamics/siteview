@@ -61,6 +61,7 @@ app.use('/api/budget', require('./routes/budget').router);
 app.use('/api/accounting', require('./routes/accounting'));
 app.use('/api/dashboard', require('./routes/dashboards'));
 app.use('/api/alerts', require('./routes/alerts'));
+app.use('/api/voice', require('./routes/voice'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', app: 'SiteView by Build Chain' });

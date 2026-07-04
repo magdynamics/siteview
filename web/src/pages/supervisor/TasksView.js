@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
+import { startListening } from '../../services/speech';
 
 const STATUS_COLOR = {
   assigned: '#888', acknowledged: '#1565c0', in_progress: '#e65100',
@@ -12,6 +13,7 @@ export default function TasksView({ siteId }) {
   const [employees, setEmployees] = useState([]);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [showNew, setShowNew] = useState(false);
+  const [showBriefing, setShowBriefing] = useState(false);
 
   const load = useCallback(async () => {
     if (!siteId) return;
@@ -47,6 +49,7 @@ export default function TasksView({ siteId }) {
           <h3 style={styles.cardTitle}>Task Board</h3>
           <div style={{ display: 'flex', gap: 10 }}>
             <input type="date" style={styles.dateInput} value={date} onChange={e => setDate(e.target.value)} />
+            <button style={{ ...styles.btn, background: '#2e7d32' }} onClick={() => setShowBriefing(true)}>🎙 Daily Briefing</button>
             <button style={styles.btn} onClick={() => setShowNew(true)}>+ Dispatch Task</button>
           </div>
         </div>
@@ -87,6 +90,8 @@ export default function TasksView({ siteId }) {
         </table>
       </div>
 
+      {showBriefing && <BriefingModal siteId={siteId} defaultDate={date} onClose={() => setShowBriefing(false)} onDispatched={() => { setShowBriefing(false); load(); }} />}
+
       {showNew && <NewTaskModal employees={employees} defaultDate={date} onClose={() => setShowNew(false)} onSave={async (form) => {
         try {
           await api.post('/tasks', { ...form, siteId });
@@ -94,6 +99,86 @@ export default function TasksView({ siteId }) {
           load();
         } catch (err) { alert(err.response?.data?.error || 'Failed to create task'); }
       }} />}
+    </div>
+  );
+}
+
+// Voice/text daily briefing -> parsed drafts -> confirm before dispatch (§6.2/§6.3)
+function BriefingModal({ siteId, defaultDate, onClose, onDispatched }) {
+  const [text, setText] = useState('');
+  const [listening, setListening] = useState(false);
+  const [result, setResult] = useState(null);
+  const [selected, setSelected] = useState({});
+  const [busy, setBusy] = useState(false);
+
+  const mic = () => {
+    const ok = startListening(
+      (transcript) => setText(t => (t ? t + ' ' : '') + transcript),
+      () => setListening(false)
+    );
+    if (ok) setListening(true);
+    else alert('Voice input needs Chrome or Edge — type the briefing instead.');
+  };
+
+  const parse = async () => {
+    setBusy(true);
+    try {
+      const res = await api.post('/voice/dispatch', { text, siteId, scheduledDate: defaultDate });
+      setResult(res.data);
+      setSelected(Object.fromEntries(res.data.drafts.map(d => [d.id, true])));
+    } catch (err) { alert(err.response?.data?.error || 'Parse failed'); }
+    finally { setBusy(false); }
+  };
+
+  const confirm = async () => {
+    const draftIds = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
+    if (!draftIds.length) return;
+    setBusy(true);
+    try {
+      const res = await api.post('/voice/dispatch/confirm', { draftIds });
+      alert(res.data.message);
+      onDispatched();
+    } catch (err) { alert(err.response?.data?.error || 'Dispatch failed'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={styles.modalOverlay}>
+      <div style={{ ...styles.modal, width: 560 }}>
+        <h3 style={{ margin: '0 0 6px', color: '#1a237e' }}>🎙 Daily Briefing</h3>
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>
+          Speak or type, e.g.: “Lewis, demolish the 5th floor NW wall. Maria, cut rebar for the 4th floor.”
+        </div>
+        <textarea style={{ ...styles.input, minHeight: 90 }} value={text} onChange={e => setText(e.target.value)} placeholder="Name, task. Name, task. …" />
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+          <button style={{ ...styles.btn, background: listening ? '#b71c1c' : '#1a237e' }} onClick={mic}>{listening ? '🔴 Listening…' : '🎙 Speak'}</button>
+          <button style={{ ...styles.btn, background: '#2e7d32' }} disabled={!text.trim() || busy} onClick={parse}>Parse Briefing</button>
+        </div>
+
+        {result && (
+          <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 12 }}>
+            {result.drafts.map(d => (
+              <label key={d.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0', borderBottom: '1px solid #f9f9f9', cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!selected[d.id]} onChange={e => setSelected(s => ({ ...s, [d.id]: e.target.checked }))} />
+                <div>
+                  <div style={{ fontSize: 13 }}><strong>{d.assignedToName}</strong> → {d.title}</div>
+                  <div style={{ fontSize: 11, color: '#888' }}>{d.planReference ? `📐 ${d.planReference} · ` : ''}{d.scheduledDate}</div>
+                </div>
+              </label>
+            ))}
+            {result.unmatched.map((u, i) => (
+              <div key={i} style={{ fontSize: 12, color: '#b71c1c', padding: '6px 0' }}>⚠️ “{u.segment}” — {u.reason}</div>
+            ))}
+            {result.drafts.length > 0 && (
+              <button style={{ ...styles.btn, width: '100%', marginTop: 12, background: '#1a237e' }} disabled={busy} onClick={confirm}>
+                Confirm & Dispatch {Object.values(selected).filter(Boolean).length} Task(s)
+              </button>
+            )}
+          </div>
+        )}
+
+        <button style={{ ...styles.cancelBtn, marginTop: 12 }} onClick={onClose}>Close</button>
+      </div>
     </div>
   );
 }
