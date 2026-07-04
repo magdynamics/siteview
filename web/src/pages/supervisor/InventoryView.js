@@ -21,16 +21,22 @@ export default function InventoryView({ siteId }) {
   }, [siteId]);
 
   const loadItems = async () => {
-    const res = await api.get(`/inventory?siteId=${siteId}`);
-    setItems(res.data);
+    try {
+      const res = await api.get(`/inventory?siteId=${siteId}`);
+      setItems(res.data);
+    } catch (err) { console.error('Inventory load failed:', err.response?.data?.error || err.message); }
   };
   const loadTransactions = async () => {
-    const res = await api.get(`/inventory/transactions?siteId=${siteId}`);
-    setTransactions(res.data);
+    try {
+      const res = await api.get(`/inventory/transactions?siteId=${siteId}`);
+      setTransactions(res.data);
+    } catch (err) { console.error('Transactions load failed:', err.response?.data?.error || err.message); }
   };
   const loadReorderRequests = async () => {
-    const res = await api.get(`/inventory/reorder-requests?siteId=${siteId}`);
-    setReorderRequests(res.data);
+    try {
+      const res = await api.get(`/inventory/reorder-requests?siteId=${siteId}`);
+      setReorderRequests(res.data);
+    } catch (err) { console.error('Reorder requests load failed:', err.response?.data?.error || err.message); }
   };
 
   const addItem = async () => {
