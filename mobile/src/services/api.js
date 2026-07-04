@@ -1,9 +1,12 @@
 import axios from 'axios';
+import Constants from 'expo-constants';
 import { auth } from './firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { enqueue, flush } from './offlineQueue';
 
-const API_URL = 'http://192.168.1.3:5000/api'; // Dev backend on the office machine's LAN IP
+// API address comes from app.json → expo.extra.apiUrl (baked into team builds);
+// falls back to the office machine's LAN IP for local development.
+const API_URL = Constants.expoConfig?.extra?.apiUrl || 'http://192.168.1.3:5000/api';
 
 const api = axios.create({ baseURL: API_URL });
 

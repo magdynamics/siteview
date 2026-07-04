@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "SiteView",
+    "slug": "site-view",
+    "owner": "moabughoushs-team",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "splash": {
+      "backgroundColor": "#1a237e"
+    },
+    "android": {
+      "package": "com.buildchain.siteview",
+      "versionCode": 1,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "RECORD_AUDIO"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.buildchain.siteview",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SiteView verifies you are on site when punching in.",
+        "NSCameraUsageDescription": "SiteView captures task evidence, documents, and incident photos."
+      }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        { "locationWhenInUsePermission": "SiteView verifies you are on site when punching in." }
+      ],
+      [
+        "expo-image-picker",
+        { "cameraPermission": "SiteView captures task evidence, documents, and incident photos." }
+      ]
+    ],
+    "extra": {
+      "apiUrl": "https://stuffing-acclimate-muster.ngrok-free.dev/api",
+      "eas": {
+        "projectId": "dfd37747-3d61-4a00-8071-ed7ab48bcbd9"
+      }
+    }
+  }
+}
