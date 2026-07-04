@@ -14,6 +14,8 @@ export default function TasksView({ siteId }) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [showNew, setShowNew] = useState(false);
   const [showBriefing, setShowBriefing] = useState(false);
+  const [mediaByTask, setMediaByTask] = useState({});
+  const [photoTask, setPhotoTask] = useState(null); // task whose photos are open
 
   const load = useCallback(async () => {
     if (!siteId) return;
@@ -24,6 +26,13 @@ export default function TasksView({ siteId }) {
       ]);
       setTasks(t.data);
       setEmployees(e.data);
+      // photo evidence per task (before/during/after)
+      const media = {};
+      await Promise.all(t.data.map(async task => {
+        try { media[task.id] = (await api.get(`/tasks/${task.id}/media`)).data; }
+        catch { media[task.id] = []; }
+      }));
+      setMediaByTask(media);
     } catch (err) { alert(err.response?.data?.error || 'Failed to load tasks'); }
   }, [siteId, date]);
 
@@ -55,7 +64,7 @@ export default function TasksView({ siteId }) {
         </div>
         <table style={styles.table}>
           <thead>
-            <tr>{['Task', 'Assigned To', 'Plan Ref', 'Status', 'Acknowledged', 'Est. Cost', ''].map(h => <th key={h} style={styles.th}>{h}</th>)}</tr>
+            <tr>{['Task', 'Assigned To', 'Plan Ref', 'Status', 'Acknowledged', 'Photos', 'Est. Cost', ''].map(h => <th key={h} style={styles.th}>{h}</th>)}</tr>
           </thead>
           <tbody>
             {tasks.map(t => (
@@ -74,6 +83,15 @@ export default function TasksView({ siteId }) {
                     ? `✓ ${new Date(t.acknowledgedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                     : <span style={{ color: '#e65100' }}>waiting…</span>}
                 </td>
+                <td style={styles.td}>
+                  {(mediaByTask[t.id] || []).length > 0
+                    ? (
+                      <button style={{ ...styles.smallBtn, background: '#1a237e' }} onClick={() => setPhotoTask(t)}>
+                        📷 {(mediaByTask[t.id] || []).length}
+                      </button>
+                    )
+                    : <span style={{ color: '#bbb' }}>—</span>}
+                </td>
                 <td style={styles.td}>{t.estimatedCost?.total ? `$${t.estimatedCost.total}` : '-'}</td>
                 <td style={styles.td}>
                   {t.status === 'blocked' && (
@@ -85,10 +103,36 @@ export default function TasksView({ siteId }) {
                 </td>
               </tr>
             ))}
-            {tasks.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 32, color: '#aaa' }}>No tasks for this date — dispatch the day's work</td></tr>}
+            {tasks.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: '#aaa' }}>No tasks for this date — dispatch the day's work</td></tr>}
           </tbody>
         </table>
       </div>
+
+      {photoTask && (
+        <div style={styles.modalOverlay} onClick={() => setPhotoTask(null)}>
+          <div style={{ ...styles.modal, width: 640 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 4px', color: '#1a237e' }}>📷 {photoTask.title}</h3>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 14 }}>{photoTask.assignedToName} · {photoTask.scheduledDate}</div>
+            {['before', 'during', 'after'].map(phase => {
+              const shots = (mediaByTask[photoTask.id] || []).filter(m => m.phase === phase);
+              if (!shots.length) return null;
+              return (
+                <div key={phase} style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{phase}</div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {shots.map(m => (
+                      <a key={m.id} href={m.url} target="_blank" rel="noreferrer" title={`${m.uploadedByName || ''} · ${new Date(m.uploadedAt).toLocaleString()}`}>
+                        <img src={m.url} alt={phase} style={{ width: 130, height: 130, objectFit: 'cover', borderRadius: 10, border: '1px solid #eee' }} />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            <button style={styles.cancelBtn} onClick={() => setPhotoTask(null)}>Close</button>
+          </div>
+        </div>
+      )}
 
       {showBriefing && <BriefingModal siteId={siteId} defaultDate={date} onClose={() => setShowBriefing(false)} onDispatched={() => { setShowBriefing(false); load(); }} />}
 
