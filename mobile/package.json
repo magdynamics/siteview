@@ -20,6 +20,7 @@
     "expo-image-picker": "~57.0.2",
     "expo-location": "~57.0.2",
     "expo-notifications": "~57.0.3",
+    "expo-status-bar": "~57.0.0",
     "firebase": "^10.3.0",
     "i18next": "^23.4.6",
     "react": "19.2.3",

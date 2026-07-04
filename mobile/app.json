@@ -6,7 +6,9 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "android": {
       "package": "com.buildchain.siteview",
       "versionCode": 1,
@@ -27,12 +29,17 @@
     "plugins": [
       [
         "expo-location",
-        { "locationWhenInUsePermission": "SiteView verifies you are on site when punching in." }
+        {
+          "locationWhenInUsePermission": "SiteView verifies you are on site when punching in."
+        }
       ],
       [
         "expo-image-picker",
-        { "cameraPermission": "SiteView captures task evidence, documents, and incident photos." }
-      ]
+        {
+          "cameraPermission": "SiteView captures task evidence, documents, and incident photos."
+        }
+      ],
+      "expo-status-bar"
     ],
     "extra": {
       "apiUrl": "https://stuffing-acclimate-muster.ngrok-free.dev/api",
