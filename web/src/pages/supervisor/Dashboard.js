@@ -9,6 +9,7 @@ import MaterialsView from './MaterialsView';
 import TasksView from './TasksView';
 import PlansView from './PlansView';
 import ChangeOrdersView from './ChangeOrdersView';
+import AlertsView from './AlertsView';
 
 const STATUS_COLOR = { on_site: '#2e7d32', left: '#b71c1c', on_break: '#e65100', absent: '#888' };
 const STATUS_LABEL = { on_site: 'On Site', left: 'Left', on_break: 'On Break', absent: 'Absent' };
@@ -97,6 +98,7 @@ export default function SupervisorDashboard() {
         <nav>
           {[
             ['live', '👥 Live Site'],
+            ['alerts', '🔔 Alerts'],
             ['tasks', '📌 Tasks'],
             ['timesheets', '📋 Timesheets'],
             ['equipment', '🔧 Equipment'],
@@ -130,7 +132,7 @@ export default function SupervisorDashboard() {
           <div>
             <h2 style={styles.pageTitle}>
               {{
-                live: 'Live Site Status', tasks: 'Task Dispatch', timesheets: 'Timesheets', equipment: 'Equipment',
+                live: 'Live Site Status', alerts: 'Alerts', tasks: 'Task Dispatch', timesheets: 'Timesheets', equipment: 'Equipment',
                 maintenance: 'Maintenance', health: 'Fleet Health', materials: 'Materials', inventory: 'Inventory',
                 plans: 'Plan Library', 'change-orders': 'Change Orders',
               }[activeTab]}
@@ -243,6 +245,7 @@ export default function SupervisorDashboard() {
           </div>
         )}
 
+        {activeTab === 'alerts' && <AlertsView siteId={selectedSite} />}
         {activeTab === 'tasks' && <TasksView siteId={selectedSite} />}
         {activeTab === 'equipment' && <EquipmentView siteId={selectedSite} />}
         {activeTab === 'maintenance' && <MaintenanceView siteId={selectedSite} />}

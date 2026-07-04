@@ -6,6 +6,7 @@ import SupervisorDashboard from './pages/supervisor/Dashboard';
 import AccountantDashboard from './pages/accountant/Dashboard';
 import ManagerDashboard from './pages/manager/Dashboard';
 import AdminDashboard from './pages/admin/Dashboard';
+import CompliancePage from './pages/CompliancePage';
 
 function RoleRouter() {
   const { user, profile, loading } = useAuth();
@@ -29,6 +30,7 @@ function RoleRouter() {
     case 'accountant': return <Navigate to="/accountant" />;
     case 'manager': return <Navigate to="/manager" />;
     case 'admin': return <Navigate to="/admin" />;
+    case 'viewer': return <Navigate to="/compliance" />;
     default: return <div>Access denied. Please contact your administrator.</div>;
   }
 }
@@ -66,6 +68,11 @@ export default function App() {
           <Route path="/admin/*" element={
             <ProtectedRoute roles={['admin']}>
               <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/compliance" element={
+            <ProtectedRoute roles={['viewer', 'accountant', 'manager', 'admin']}>
+              <CompliancePage />
             </ProtectedRoute>
           } />
         </Routes>
