@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import BudgetView from './BudgetView';
 
 export default function AccountantDashboard() {
   const { profile, logout } = useAuth();
@@ -55,13 +56,13 @@ export default function AccountantDashboard() {
           <div style={styles.logoSub}>SITE VIEW</div>
         </div>
         <nav>
-          {['timesheets', 'documents', 'audit'].map(tab => (
+          {['budget', 'timesheets', 'documents', 'audit'].map(tab => (
             <div
               key={tab}
               style={{ ...styles.navItem, ...(activeTab === tab ? styles.navItemActive : {}) }}
               onClick={() => setActiveTab(tab)}
             >
-              {tab === 'timesheets' ? '📋 Timesheets' : tab === 'documents' ? '📄 Documents' : '🔍 Audit Log'}
+              {tab === 'budget' ? '💰 Budget & Cash' : tab === 'timesheets' ? '📋 Timesheets' : tab === 'documents' ? '📄 Documents' : '🔍 Audit Log'}
             </div>
           ))}
         </nav>
@@ -74,8 +75,10 @@ export default function AccountantDashboard() {
 
       <div style={styles.main}>
         <h2 style={styles.pageTitle}>
-          {activeTab === 'timesheets' ? 'Approved Timesheets & Invoices' : activeTab === 'documents' ? 'Documents' : 'Audit Log'}
+          {activeTab === 'budget' ? 'Budget & Cash Forecast' : activeTab === 'timesheets' ? 'Approved Timesheets & Invoices' : activeTab === 'documents' ? 'Documents' : 'Audit Log'}
         </h2>
+
+        {activeTab === 'budget' && <BudgetView />}
 
         {activeTab === 'timesheets' && (
           <>

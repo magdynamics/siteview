@@ -57,6 +57,8 @@ app.use('/api/materials', require('./routes/materials'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/plans', require('./routes/plans'));
 app.use('/api/change-orders', require('./routes/changeOrders'));
+app.use('/api/budget', require('./routes/budget').router);
+app.use('/api/accounting', require('./routes/accounting'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', app: 'SiteView by Build Chain' });
