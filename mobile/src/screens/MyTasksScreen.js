@@ -74,7 +74,7 @@ export default function MyTasksScreen() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') { Alert.alert('Error', t('cameraRequired')); return; }
     const result = await ImagePicker.launchCameraAsync(video
-      ? { mediaTypes: ImagePicker.MediaTypeOptions.Videos, videoMaxDuration: 20 }
+      ? { mediaTypes: ['videos'], videoMaxDuration: 20 }
       : { quality: 0.4 });
     if (result.canceled || !result.assets?.[0]) return;
 

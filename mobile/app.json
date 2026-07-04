@@ -7,9 +7,6 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": ["**/*"],
-    "splash": {
-      "backgroundColor": "#1a237e"
-    },
     "android": {
       "package": "com.buildchain.siteview",
       "versionCode": 1,
