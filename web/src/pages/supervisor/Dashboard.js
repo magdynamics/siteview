@@ -45,13 +45,17 @@ export default function SupervisorDashboard() {
 
   const loadLiveStatus = async () => {
     if (!selectedSite) return;
-    const res = await api.get(`/punches/site/${selectedSite}/live`);
-    setLiveStatus(res.data);
+    try {
+      const res = await api.get(`/punches/site/${selectedSite}/live`);
+      setLiveStatus(res.data);
+    } catch (err) { console.error('Live status failed:', err.response?.data?.error || err.message); }
   };
 
   const loadEmployees = async () => {
-    const res = await api.get(`/employees?siteId=${selectedSite}`);
-    setEmployees(res.data);
+    try {
+      const res = await api.get(`/employees?siteId=${selectedSite}`);
+      setEmployees(res.data);
+    } catch (err) { console.error('Employees load failed:', err.response?.data?.error || err.message); }
   };
 
   const generateTimesheets = async () => {

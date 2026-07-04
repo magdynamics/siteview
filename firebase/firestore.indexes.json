@@ -97,6 +97,14 @@
       ]
     },
     {
+      "collectionGroup": "punches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "siteId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "material_tickets",
       "queryScope": "COLLECTION",
       "fields": [
