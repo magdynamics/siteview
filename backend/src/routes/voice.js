@@ -115,7 +115,7 @@ router.post('/dispatch/confirm', authenticate, authorize('supervisor', 'manager'
         planReference: d.planReference || '', changeOrderId: null,
         scheduledDate: d.scheduledDate, status: 'assigned',
         acknowledgedAt: null, startedAt: null, completedAt: null, blockedReason: null,
-        requiredEquipmentIds: [], requiredMaterials: [], estimatedHours: null,
+        requiredEquipmentIds: [], requiredMaterials: [], estimatedHours: null, requiredCrewSize: 1,
         estimatedCost: { labor: 0, equipment: 0, materials: 0, total: 0 },
         reworkFlag: false, createdAt: now,
       };

@@ -22,7 +22,7 @@ async function raiseAlert({ siteId, alertType, severity, message, relatedId }) {
   return true;
 }
 
-async function evaluateSite(site) {
+async function evaluateSite(site, opts = {}) {
   let raised = 0;
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -68,6 +68,26 @@ async function evaluateSite(site) {
       message: `Rework required: completed task "${t.title}" affected by a change order` })) raised++;
   }
 
+  // understaffed: crew required by today's open tasks vs crew on site (§8)
+  // only meaningful during working hours — the 6am run shouldn't cry wolf
+  const hour = new Date().getHours();
+  if (opts.force || (hour >= 8 && hour <= 16)) {
+    const openToday = tasks.filter(x => x.scheduledDate === todayStr && x.status !== 'complete');
+    const required = openToday.reduce((s, x) => s + (x.requiredCrewSize || 1), 0);
+    if (required > 0) {
+      const punchSnap = await db.collection('punches')
+        .where('timestamp', '>=', `${todayStr}T00:00:00.000Z`).get();
+      const byEmp = {};
+      punchSnap.docs.map(d => d.data()).filter(p => p.siteId === site.id)
+        .forEach(p => { if (!byEmp[p.employeeId] || p.timestamp > byEmp[p.employeeId].timestamp) byEmp[p.employeeId] = p; });
+      const onSite = Object.values(byEmp).filter(p => p.type === 'in').length;
+      if (onSite < required) {
+        if (await raiseAlert({ siteId: site.id, alertType: 'understaffed', severity: 'warning', relatedId: `${site.id}_${todayStr}`,
+          message: `Today's open tasks need ${required} worker(s); ${onSite} currently on site` })) raised++;
+      }
+    }
+  }
+
   // material_shortage / BOM overrun
   for (const d of matSnap.docs) {
     const m = d.data();
@@ -96,11 +116,11 @@ async function evaluateSite(site) {
   return raised;
 }
 
-async function evaluateAll() {
+async function evaluateAll(opts = {}) {
   const sitesSnap = await db.collection('sites').where('isActive', '==', true).get();
   let total = 0;
   for (const doc of sitesSnap.docs) {
-    try { total += await evaluateSite(doc.data()); } catch (e) { console.error('[Alerts]', doc.data().name, e.message); }
+    try { total += await evaluateSite(doc.data(), opts); } catch (e) { console.error('[Alerts]', doc.data().name, e.message); }
   }
   return total;
 }
@@ -135,7 +155,7 @@ router.patch('/:id/acknowledge', authenticate, authorize('supervisor', 'accounta
 // On-demand evaluation (also used by tests)
 router.post('/evaluate', authenticate, authorize('manager', 'admin'), async (req, res) => {
   try {
-    const raised = await evaluateAll();
+    const raised = await evaluateAll({ force: true });
     res.json({ message: 'Evaluation complete', newAlerts: raised });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

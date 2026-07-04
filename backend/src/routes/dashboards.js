@@ -93,8 +93,11 @@ router.get('/operations', authenticate, authorize('supervisor', 'manager', 'admi
     const equipment = equipSnap.docs.map(d => d.data());
     const openTickets = ticketSnap.docs.map(d => d.data()).filter(x => ['pending', 'approved', 'in_progress'].includes(x.status));
 
+    const requiredToday = tasks.filter(x => x.status !== 'complete')
+      .reduce((s, x) => s + (x.requiredCrewSize || 1), 0);
+
     res.json({
-      crew: { onSiteNow: crewOnSite, punchedToday: Object.keys(byEmp).length },
+      crew: { onSiteNow: crewOnSite, punchedToday: Object.keys(byEmp).length, requiredToday },
       tasksToday: {
         total: tasks.length,
         byStatus: ['assigned', 'acknowledged', 'in_progress', 'blocked', 'complete']

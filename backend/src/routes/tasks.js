@@ -72,6 +72,7 @@ router.post('/', authenticate, async (req, res) => {
     const {
       siteId, title, description, assignedTo, planReference,
       scheduledDate, requiredEquipmentIds, requiredMaterials, estimatedHours,
+      requiredCrewSize,
     } = req.body;
 
     if (!siteId) return res.status(400).json({ error: 'siteId is required' });
@@ -105,6 +106,7 @@ router.post('/', authenticate, async (req, res) => {
       requiredEquipmentIds: requiredEquipmentIds || [],
       requiredMaterials: requiredMaterials || [],   // [{materialId, qty}]
       estimatedHours: estimatedHours ? parseFloat(estimatedHours) : null,
+      requiredCrewSize: requiredCrewSize ? Math.max(1, parseInt(requiredCrewSize)) : 1,
       estimatedCost,
       reworkFlag: false,
       createdAt: now,

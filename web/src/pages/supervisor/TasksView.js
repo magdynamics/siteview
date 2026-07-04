@@ -186,7 +186,7 @@ function BriefingModal({ siteId, defaultDate, onClose, onDispatched }) {
 function NewTaskModal({ employees, defaultDate, onClose, onSave }) {
   const [form, setForm] = useState({
     title: '', description: '', assignedTo: '', planReference: '',
-    scheduledDate: defaultDate, estimatedHours: '',
+    scheduledDate: defaultDate, estimatedHours: '', requiredCrewSize: 1,
   });
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -209,6 +209,10 @@ function NewTaskModal({ employees, defaultDate, onClose, onSave }) {
           <div style={{ flex: 1 }}>
             <label style={styles.label}>Estimated hours</label>
             <input type="number" style={styles.input} placeholder="e.g. 6" value={form.estimatedHours} onChange={e => update('estimatedHours', e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={styles.label}>Crew size</label>
+            <input type="number" min="1" style={styles.input} value={form.requiredCrewSize} onChange={e => update('requiredCrewSize', e.target.value)} />
           </div>
         </div>
         <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
