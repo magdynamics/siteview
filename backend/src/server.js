@@ -67,6 +67,8 @@ app.use('/api/weather', require('./routes/weather').router);
 app.use('/api/subcontractors', require('./routes/subcontractors'));
 app.use('/api/vendors', require('./routes/vendors'));
 app.use('/api/payments', require('./routes/payments'));
+app.use('/api/tm-invoices', require('./routes/tmInvoices'));
+app.use('/api/progress', require('./routes/progress'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', app: 'SiteView by Build Chain' });
