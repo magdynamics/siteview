@@ -71,6 +71,36 @@ router.get('/', authenticate, authorize('supervisor', 'accountant', 'manager', '
   }
 });
 
+// Availability for the scheduling calendar's resource pool — must be
+// registered before /:id, otherwise Express matches "availability" as an id.
+router.get('/availability', authenticate, authorize('supervisor', 'manager', 'admin'), async (req, res) => {
+  try {
+    const { date, siteId } = req.query;
+    if (!date) return res.status(400).json({ error: 'date is required' });
+
+    let query = db.collection('users').where('role', '==', 'employee');
+    if (siteId) query = query.where('assignedSiteId', '==', siteId);
+    const empSnap = await query.get();
+    const employees = empSnap.docs.map(d => d.data()).filter(e => e.isActive !== false);
+
+    const taskSnap = await db.collection('tasks').where('scheduledDate', '==', date).get();
+    const bookedByEmployee = {};
+    taskSnap.docs.forEach(d => {
+      const t = d.data();
+      if (t.status === 'complete' || !t.assignedTo) return;
+      bookedByEmployee[t.assignedTo] = bookedByEmployee[t.assignedTo] || [];
+      bookedByEmployee[t.assignedTo].push({ taskId: t.id, title: t.title, siteId: t.siteId });
+    });
+
+    res.json(employees.map(e => ({
+      uid: e.uid,
+      name: e.name,
+      assignedSiteId: e.assignedSiteId,
+      bookings: bookedByEmployee[e.uid] || [],
+    })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Get single employee
 router.get('/:id', authenticate, async (req, res) => {
   try {

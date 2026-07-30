@@ -7,6 +7,7 @@ import EquipmentView from './EquipmentView';
 import InventoryView from './InventoryView';
 import MaterialsView from './MaterialsView';
 import TasksView from './TasksView';
+import SchedulingView from './SchedulingView';
 import PlansView from './PlansView';
 import ChangeOrdersView from './ChangeOrdersView';
 import AlertsView from './AlertsView';
@@ -107,6 +108,7 @@ export default function SupervisorDashboard() {
             ['ask', '💬 Ask'],
             ['alerts', '🔔 Alerts'],
             ['tasks', '📌 Tasks'],
+            ['scheduling', '📅 Scheduling'],
             ['timesheets', '📋 Timesheets'],
             ['equipment', '🔧 Equipment'],
             ['maintenance', '🔖 Maintenance'],
@@ -143,7 +145,7 @@ export default function SupervisorDashboard() {
           <div>
             <h2 style={styles.pageTitle}>
               {{
-                live: 'Live Site Status', ask: 'Ask SiteView', alerts: 'Alerts', tasks: 'Task Dispatch', timesheets: 'Timesheets', equipment: 'Equipment',
+                live: 'Live Site Status', ask: 'Ask SiteView', alerts: 'Alerts', tasks: 'Task Dispatch', scheduling: 'Scheduling Calendar', timesheets: 'Timesheets', equipment: 'Equipment',
                 maintenance: 'Maintenance', health: 'Fleet Health', materials: 'Materials', inventory: 'Inventory',
                 plans: 'Plan Library', 'change-orders': 'Change Orders',
               }[activeTab]}
@@ -259,6 +261,7 @@ export default function SupervisorDashboard() {
         {activeTab === 'ask' && <AskView siteId={selectedSite} />}
         {activeTab === 'alerts' && <AlertsView siteId={selectedSite} />}
         {activeTab === 'tasks' && <TasksView siteId={selectedSite} />}
+        {activeTab === 'scheduling' && <SchedulingView siteId={selectedSite} />}
         {activeTab === 'equipment' && <EquipmentView siteId={selectedSite} />}
         {activeTab === 'maintenance' && <MaintenanceView siteId={selectedSite} />}
         {activeTab === 'health' && <HealthDashboard siteId={selectedSite} />}

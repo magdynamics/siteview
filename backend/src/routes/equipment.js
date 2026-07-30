@@ -63,6 +63,39 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+// Availability for the scheduling calendar's resource pool
+router.get('/availability', authenticate, authorize('supervisor', 'manager', 'admin'), async (req, res) => {
+  try {
+    const { date, siteId } = req.query;
+    if (!date) return res.status(400).json({ error: 'date is required' });
+
+    let query = db.collection('equipment').where('isActive', '==', true);
+    if (siteId) query = query.where('siteId', '==', siteId);
+    const eqSnap = await query.get();
+    const equipmentList = eqSnap.docs.map(d => d.data());
+
+    const taskSnap = await db.collection('tasks').where('scheduledDate', '==', date).get();
+    const bookedByEquipment = {};
+    taskSnap.docs.forEach(d => {
+      const t = d.data();
+      if (t.status === 'complete') return;
+      (t.requiredEquipmentIds || []).forEach(equipId => {
+        bookedByEquipment[equipId] = bookedByEquipment[equipId] || [];
+        bookedByEquipment[equipId].push({ taskId: t.id, title: t.title, siteId: t.siteId });
+      });
+    });
+
+    res.json(equipmentList.map(e => ({
+      id: e.id,
+      name: e.name,
+      typeName: e.typeName,
+      siteId: e.siteId,
+      status: e.status,
+      bookings: bookedByEquipment[e.id] || [],
+    })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Add new equipment unit
 router.post('/', authenticate, authorize('admin', 'supervisor'), async (req, res) => {
   try {

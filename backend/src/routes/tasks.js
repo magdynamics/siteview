@@ -139,6 +139,26 @@ router.get('/', authenticate, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── CALENDAR VIEW ────────────────────────────────────────────────────────────
+// Must be registered before /:id — otherwise Express matches "calendar" as an id.
+// Tasks in a date range, shaped for the scheduling calendar (day/week/month).
+router.get('/calendar', authenticate, authorize('supervisor', 'manager', 'admin'), async (req, res) => {
+  try {
+    const { siteId, startDate, endDate } = req.query;
+    if (!startDate || !endDate) return res.status(400).json({ error: 'startDate and endDate are required' });
+
+    let query = db.collection('tasks');
+    if (siteId) query = query.where('siteId', '==', siteId);
+    const snap = await query.get();
+
+    const tasks = snap.docs
+      .map(d => d.data())
+      .filter(t => t.scheduledDate >= startDate && t.scheduledDate <= endDate);
+
+    res.json(tasks);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/:id', authenticate, async (req, res) => {
   try {
     const doc = await db.collection('tasks').doc(req.params.id).get();
@@ -311,6 +331,62 @@ router.get('/:id/cost', authenticate, authorize('supervisor', 'accountant', 'man
       actual,
       variance: task.estimatedCost ? +(actual.total - task.estimatedCost.total).toFixed(2) : null,
     });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── RESCHEDULE (drag-and-drop) ───────────────────────────────────────────────
+// Moves a task to a new date and/or reassigns it. Conflicts (the employee or
+// any required equipment already booked at a different site that day) are
+// soft — the move still applies, and the response flags what to double-check.
+router.patch('/:id/reschedule', authenticate, authorize('supervisor', 'manager', 'admin'), async (req, res) => {
+  try {
+    const { scheduledDate, assignedTo } = req.body;
+    if (!scheduledDate) return res.status(400).json({ error: 'scheduledDate is required' });
+
+    const doc = await db.collection('tasks').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Task not found' });
+    const task = doc.data();
+
+    const newAssignee = assignedTo || task.assignedTo;
+    let assigneeName = task.assignedToName;
+    if (assignedTo && assignedTo !== task.assignedTo) {
+      const assigneeDoc = await db.collection('users').doc(assignedTo).get();
+      if (!assigneeDoc.exists) return res.status(400).json({ error: 'assignedTo does not match an existing user' });
+      assigneeName = assigneeDoc.data().name || '';
+    }
+
+    // Soft conflict check: same employee or same equipment already booked
+    // at a DIFFERENT site on the target date. Multiple tasks for the same
+    // resource at the SAME site on the same day is normal and not flagged.
+    const conflicts = [];
+    const daySnap = await db.collection('tasks')
+      .where('scheduledDate', '==', scheduledDate)
+      .get();
+    const equipmentIds = task.requiredEquipmentIds || [];
+    daySnap.docs.forEach(d => {
+      const other = d.data();
+      if (other.id === task.id || other.status === 'complete') return;
+      if (other.siteId === task.siteId) return;
+      if (other.assignedTo === newAssignee) {
+        conflicts.push({ type: 'employee', name: assigneeName, conflictingTask: other.title, conflictingSite: other.siteId });
+      }
+      const overlap = (other.requiredEquipmentIds || []).filter(id => equipmentIds.includes(id));
+      overlap.forEach(equipId => {
+        conflicts.push({ type: 'equipment', equipmentId: equipId, conflictingTask: other.title, conflictingSite: other.siteId });
+      });
+    });
+
+    await db.collection('tasks').doc(req.params.id).update({
+      scheduledDate,
+      assignedTo: newAssignee,
+      assignedToName: assigneeName,
+    });
+
+    if (assignedTo && assignedTo !== task.assignedTo) {
+      await notifyUser(newAssignee, '📋 Task Rescheduled to You', `${task.title} — ${scheduledDate}`);
+    }
+
+    res.json({ message: 'Task rescheduled', conflicts });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
