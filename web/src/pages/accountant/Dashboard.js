@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import BudgetView from './BudgetView';
 import SubcontractorsView from './SubcontractorsView';
 import PaymentsView from './PaymentsView';
+import TMInvoicesView from './TMInvoicesView';
 
 export default function AccountantDashboard() {
   const { profile, logout } = useAuth();
@@ -58,13 +59,13 @@ export default function AccountantDashboard() {
           <div style={styles.logoSub}>SITE VIEW</div>
         </div>
         <nav>
-          {['budget', 'timesheets', 'subcontractors', 'payments', 'documents', 'audit'].map(tab => (
+          {['budget', 'timesheets', 'tm-invoices', 'subcontractors', 'payments', 'documents', 'audit'].map(tab => (
             <div
               key={tab}
               style={{ ...styles.navItem, ...(activeTab === tab ? styles.navItemActive : {}) }}
               onClick={() => setActiveTab(tab)}
             >
-              {tab === 'budget' ? '💰 Budget & Cash' : tab === 'timesheets' ? '📋 Timesheets' : tab === 'subcontractors' ? '🏗 Vendors & Subs' : tab === 'payments' ? '💸 Payments' : tab === 'documents' ? '📄 Documents' : '🔍 Audit Log'}
+              {tab === 'budget' ? '💰 Budget & Cash' : tab === 'timesheets' ? '📋 Timesheets' : tab === 'tm-invoices' ? '🧾 T&M Invoices' : tab === 'subcontractors' ? '🏗 Vendors & Subs' : tab === 'payments' ? '💸 Payments' : tab === 'documents' ? '📄 Documents' : '🔍 Audit Log'}
             </div>
           ))}
         </nav>
@@ -80,10 +81,11 @@ export default function AccountantDashboard() {
 
       <div style={styles.main}>
         <h2 style={styles.pageTitle}>
-          {activeTab === 'budget' ? 'Budget & Cash Forecast' : activeTab === 'timesheets' ? 'Approved Timesheets & Invoices' : activeTab === 'subcontractors' ? 'Vendors, Subcontractors & Invoices' : activeTab === 'payments' ? 'Payment Ledger' : activeTab === 'documents' ? 'Documents' : 'Audit Log'}
+          {activeTab === 'budget' ? 'Budget & Cash Forecast' : activeTab === 'timesheets' ? 'Approved Timesheets & Invoices' : activeTab === 'tm-invoices' ? 'T&M Invoices' : activeTab === 'subcontractors' ? 'Vendors, Subcontractors & Invoices' : activeTab === 'payments' ? 'Payment Ledger' : activeTab === 'documents' ? 'Documents' : 'Audit Log'}
         </h2>
 
         {activeTab === 'budget' && <BudgetView />}
+        {activeTab === 'tm-invoices' && <TMInvoicesView />}
         {activeTab === 'subcontractors' && <SubcontractorsView />}
         {activeTab === 'payments' && <PaymentsView />}
 
