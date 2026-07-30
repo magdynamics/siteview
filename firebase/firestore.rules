@@ -10,6 +10,11 @@ service cloud.firestore {
     function hasRole(role) {
       return isAuth() && getUser().role == role;
     }
+    // Roles that should see company-wide field data (pay rates, timesheets,
+    // documents) rather than only their own records
+    function isOfficeRole() {
+      return isAuth() && getUser().role in ['admin', 'manager', 'supervisor', 'accountant'];
+    }
 
     // User docs carry pay rates and FCM tokens: employees may read only
     // their own profile; office roles may read the directory
@@ -25,12 +30,18 @@ service cloud.firestore {
       allow write: if hasRole('admin');
     }
     match /punches/{punchId} {
-      allow read: if isAuth();
+      // Punches carry a rateSnapshot (pay rate at punch-in) — only the
+      // employee who owns the punch or office roles may read it
+      allow read: if isAuth() && (
+        resource.data.employeeId == request.auth.uid || isOfficeRole()
+      );
       allow create: if isAuth();
       allow update: if hasRole('admin') || hasRole('supervisor');
     }
     match /timesheets/{timesheetId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && (
+        resource.data.employeeId == request.auth.uid || isOfficeRole()
+      );
       allow write: if hasRole('admin') || hasRole('supervisor') || hasRole('accountant');
     }
     match /task_photos/{photoId} {
@@ -38,7 +49,9 @@ service cloud.firestore {
       allow create: if isAuth();
     }
     match /documents/{docId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && (
+        resource.data.uploadedBy == request.auth.uid || isOfficeRole()
+      );
       allow create: if isAuth();
     }
     match /audit_logs/{logId} {

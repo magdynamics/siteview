@@ -10,7 +10,12 @@ const authenticate = async (req, res, next) => {
 
     if (!userDoc.exists) return res.status(401).json({ error: 'User not found' });
 
-    req.user = { uid: decoded.uid, ...userDoc.data() };
+    const userData = userDoc.data();
+    if (userData.isActive === false) {
+      return res.status(401).json({ error: 'Account is deactivated' });
+    }
+
+    req.user = { uid: decoded.uid, ...userData };
     next();
   } catch (err) {
     res.status(401).json({ error: 'Invalid token' });
