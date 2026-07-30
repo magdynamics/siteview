@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import FleetReports from './FleetReports';
 import ChangeOrdersView from '../supervisor/ChangeOrdersView';
 import ExecutiveView from './ExecutiveView';
+import ProgressView from './ProgressView';
 
 export default function ManagerDashboard() {
   const { profile, logout } = useAuth();
@@ -42,7 +43,7 @@ export default function ManagerDashboard() {
           <div style={styles.logoSub}>SITE VIEW</div>
         </div>
         <nav>
-          {[['overview', '📊 Overview'], ['executive', '🏛 Executive'], ['fleet', '🚜 Fleet Reports'], ['change-orders', '📝 Change Orders']].map(([key, label]) => (
+          {[['overview', '📊 Overview'], ['executive', '🏛 Executive'], ['progress', '📈 Progress'], ['fleet', '🚜 Fleet Reports'], ['change-orders', '📝 Change Orders']].map(([key, label]) => (
             <div key={key}
               style={{ ...styles.navItem, ...(view === key ? styles.navItemActive : {}) }}
               onClick={() => setView(key)}>
@@ -67,6 +68,15 @@ export default function ManagerDashboard() {
               <h2 style={styles.pageTitle}>Fleet Reports</h2>
             </div>
             <FleetReports />
+          </>
+        )}
+
+        {view === 'progress' && (
+          <>
+            <div style={styles.header}>
+              <h2 style={styles.pageTitle}>Progress Tracking</h2>
+            </div>
+            <ProgressView />
           </>
         )}
 
