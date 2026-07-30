@@ -16,6 +16,7 @@ export default function TasksView({ siteId }) {
   const [showBriefing, setShowBriefing] = useState(false);
   const [mediaByTask, setMediaByTask] = useState({});
   const [photoTask, setPhotoTask] = useState(null); // task whose photos are open
+  const [textTarget, setTextTarget] = useState(null); // null = not open; 'site' = broadcast; {uid,name} = one employee
 
   const load = useCallback(async () => {
     if (!siteId) return;
@@ -59,6 +60,7 @@ export default function TasksView({ siteId }) {
           <div style={{ display: 'flex', gap: 10 }}>
             <input type="date" style={styles.dateInput} value={date} onChange={e => setDate(e.target.value)} />
             <button style={{ ...styles.btn, background: '#2e7d32' }} onClick={() => setShowBriefing(true)}>🎙 Daily Briefing</button>
+            <button style={{ ...styles.btn, background: '#00838f' }} onClick={() => setTextTarget('site')}>📱 Text Crew</button>
             <button style={styles.btn} onClick={() => setShowNew(true)}>+ Dispatch Task</button>
           </div>
         </div>
@@ -94,6 +96,7 @@ export default function TasksView({ siteId }) {
                 </td>
                 <td style={styles.td}>{t.estimatedCost?.total ? `$${t.estimatedCost.total}` : '-'}</td>
                 <td style={styles.td}>
+                  <button style={{ ...styles.smallBtn, background: '#00838f' }} onClick={() => setTextTarget({ uid: t.assignedTo, name: t.assignedToName })}>📱</button>
                   {t.status === 'blocked' && (
                     <button style={{ ...styles.smallBtn, background: '#1565c0' }}
                       onClick={() => api.patch(`/tasks/${t.id}/status`, { status: 'in_progress' }).then(load).catch(e => alert(e.response?.data?.error || 'Failed'))}>
@@ -134,6 +137,14 @@ export default function TasksView({ siteId }) {
             <button style={styles.cancelBtn} onClick={() => setPhotoTask(null)}>Close</button>
           </div>
         </div>
+      )}
+
+      {textTarget && (
+        <TextModal
+          target={textTarget}
+          siteId={siteId}
+          onClose={() => setTextTarget(null)}
+        />
       )}
 
       {showBriefing && <BriefingModal siteId={siteId} defaultDate={date} onClose={() => setShowBriefing(false)} onDispatched={() => { setShowBriefing(false); load(); }} />}
@@ -224,6 +235,54 @@ function BriefingModal({ siteId, defaultDate, onClose, onDispatched }) {
         )}
 
         <button style={{ ...styles.cancelBtn, marginTop: 12 }} onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+function TextModal({ target, siteId, onClose }) {
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const isSite = target === 'site';
+
+  const send = async () => {
+    if (!message.trim()) return;
+    setBusy(true);
+    try {
+      const body = isSite ? { message, siteId } : { message, employeeIds: [target.uid] };
+      const res = await api.post('/notifications/sms', body);
+      setResult(res.data);
+    } catch (err) { alert(err.response?.data?.error || 'Send failed'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={styles.modalOverlay}>
+      <div style={{ ...styles.modal, width: 440 }}>
+        <h3 style={{ margin: '0 0 6px', color: '#1a237e' }}>📱 {isSite ? 'Text Entire Crew' : `Text ${target.name}`}</h3>
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>
+          {isSite ? "Sends to every active employee assigned to this site." : `Sends directly to ${target.name}'s phone on file.`}
+        </div>
+        <textarea style={{ ...styles.input, minHeight: 80 }} value={message} onChange={e => setMessage(e.target.value)} placeholder="Type your message…" />
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button style={styles.cancelBtn} onClick={onClose}>Close</button>
+          <button style={styles.btn} disabled={!message.trim() || busy} onClick={send}>{busy ? 'Sending…' : 'Send'}</button>
+        </div>
+
+        {result && (
+          <div style={{ marginTop: 14, borderTop: '1px solid #f0f0f0', paddingTop: 12 }}>
+            {!result.smsEnabled && (
+              <div style={{ fontSize: 12, color: '#e65100', marginBottom: 8 }}>⚠️ Twilio isn't configured yet — nothing was actually sent. Set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER in the backend to enable real texting.</div>
+            )}
+            <div style={{ fontSize: 12, color: '#555' }}>{result.message}</div>
+            {result.results.map(r => (
+              <div key={r.id} style={{ fontSize: 12, color: r.sent ? '#2e7d32' : '#b71c1c', padding: '2px 0' }}>
+                {r.sent ? '✓' : '✗'} {r.name}{r.error ? ` — ${r.error}` : ''}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -21,6 +21,7 @@
     "node-cron": "^3.0.2",
     "nodemailer": "^6.9.4",
     "pdfkit": "^0.14.0",
+    "twilio": "^6.0.2",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
